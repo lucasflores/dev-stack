@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dev-stack"
+version = "0.1.0"
+description = "CLI to initialize or augment repositories with automation, AI pipelines, and Spec Kit integration."
+readme = "README.md"
+authors = [
+  { name = "Dev Stack Team" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+  "click>=8.1",
+  "tomli-w>=1.0",
+  "rich>=13.7",
+  "pathspec>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "ruff>=0.3",
+  "pip-audit>=2.7",
+  "detect-secrets>=1.5",
+]
+
+[project.scripts]
+"dev-stack" = "dev_stack.cli.main:cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"dev_stack" = [
+  "templates/**/*",
+  "visualization/templates/*.d2",
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=dev_stack.pipeline --cov-report=term-missing --cov-fail-under=80"
+testpaths = [
+  "tests",
+]
+
+[tool.coverage.run]
+omit = ["src/dev_stack/pipeline/agent_bridge.py"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = ["E", "F", "I", "B"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

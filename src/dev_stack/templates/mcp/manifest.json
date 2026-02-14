@@ -1,0 +1,61 @@
+{
+  "default_servers": [
+    "context7",
+    "github",
+    "sequential-thinking",
+    "huggingface",
+    "notebooklm"
+  ],
+  "agents": {
+    "claude": {
+      "config_path": ".claude/settings.local.json",
+      "template": "claude/settings.local.json"
+    },
+    "copilot": {
+      "config_path": ".github/copilot-mcp.json",
+      "template": "github/copilot-mcp.json"
+    }
+  },
+  "servers": [
+    {
+      "name": "context7",
+      "package": "@upstash/context7-mcp",
+      "command": ["npx", "--yes", "@upstash/context7-mcp", "start"],
+      "health_check": null,
+      "env": [],
+      "description": "Context7 knowledge retrieval and reference search"
+    },
+    {
+      "name": "github",
+      "package": "@modelcontextprotocol/server-github",
+      "command": ["npx", "--yes", "@modelcontextprotocol/server-github", "start"],
+      "health_check": null,
+      "env": ["GITHUB_TOKEN"],
+      "description": "GitHub repository operations"
+    },
+    {
+      "name": "sequential-thinking",
+      "package": "@modelcontextprotocol/server-sequentialthinking",
+      "command": ["npx", "--yes", "@modelcontextprotocol/server-sequentialthinking", "start"],
+      "health_check": null,
+      "env": [],
+      "description": "Structured reasoning utilities"
+    },
+    {
+      "name": "huggingface",
+      "package": "@huggingface/mcp-server",
+      "command": ["npx", "--yes", "@huggingface/mcp-server", "start"],
+      "health_check": null,
+      "env": ["HF_TOKEN"],
+      "description": "Hugging Face model discovery"
+    },
+    {
+      "name": "notebooklm",
+      "package": "notebooklm-mcp",
+      "command": ["npx", "--yes", "notebooklm-mcp", "start"],
+      "health_check": null,
+      "env": ["GOOGLE_API_KEY"],
+      "description": "NotebookLM research notebooks"
+    }
+  ]
+}

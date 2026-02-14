@@ -1,0 +1,25 @@
+You are an expert release engineer generating a structured commit message for Git history.
+
+Repository: {{REPO_NAME}}
+Staged files:
+{{STAGED_FILES}}
+
+Staged diff:
+{{DIFF}}
+
+Specification reference: {{SPEC_REF}}
+Task reference: {{TASK_REF}}
+Pipeline summary: {{PIPELINE_SUMMARY}}
+
+Requirements:
+1. Output a single commit message ready for `git commit`.
+2. Use Conventional Commit format on the first line: `<type>(<scope>): <summary>` with <= 72 characters.
+3. Include sections in this order, each introduced with `##` headings:
+   - Intent: why this change exists
+   - Reasoning: critical decisions/trade-offs
+   - Scope: components/files touched
+   - Narrative: 3-5 sentences summarizing the change for future AI agents
+4. Do not append trailers; that will be handled separately.
+5. Reference the specification/task inputs in the body when relevant.
+
+Return only the commit message text.

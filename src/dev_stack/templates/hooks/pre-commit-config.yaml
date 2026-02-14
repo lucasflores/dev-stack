@@ -1,0 +1,19 @@
+repos:
+  - repo: local
+    hooks:
+      - id: dev-stack-pipeline
+        name: dev-stack pipeline
+        entry: dev-stack pipeline run
+        language: system
+        pass_filenames: false
+        stages: [commit]
+      - id: dev-stack-ruff
+        name: ruff lint
+        entry: ruff check
+        language: system
+        pass_filenames: true
+      - id: dev-stack-pytest
+        name: pytest quick suite
+        entry: pytest -q
+        language: system
+        pass_filenames: false

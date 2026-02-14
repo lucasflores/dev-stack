@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  dev-stack:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DEV_STACK_PIP_SPEC: "${DEV_STACK_PIP_SPEC:-dev-stack>=0.1.0}"
+    image: dev-stack-pipeline:latest
+    environment:
+      # Override to point at a real coding agent if available inside the container
+      DEV_STACK_AGENT: "none"
+    volumes:
+      - .:/workspace:rw
+      - devstack-cache:/workspace/.dev-stack
+    command: ["dev-stack", "pipeline", "run", "--force"]
+    tty: true
+    stdin_open: true
+
+volumes:
+  devstack-cache:
+    driver: local

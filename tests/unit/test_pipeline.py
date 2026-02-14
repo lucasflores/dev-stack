@@ -1,0 +1,240 @@
+"""Tests for the pipeline runner orchestration logic."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from dev_stack.pipeline.runner import PipelineRunner
+from dev_stack.pipeline.stages import FailureMode, PipelineStage, StageContext, StageResult, StageStatus
+
+
+def _make_stage(
+    name: str,
+    order: int,
+    *,
+    failure_mode: FailureMode,
+    status: StageStatus,
+    requires_agent: bool = False,
+    duration_ms: int = 2,
+) -> PipelineStage:
+    def _executor(_: StageContext) -> StageResult:
+        return StageResult(
+            stage_name=name,
+            status=status,
+            failure_mode=failure_mode,
+            duration_ms=duration_ms,
+            output=f"{name}:{status.value}",
+        )
+
+    return PipelineStage(
+        order=order,
+        name=name,
+        failure_mode=failure_mode,
+        requires_agent=requires_agent,
+        executor=_executor,
+    )
+
+
+def _parallel_executor(_: StageContext) -> StageResult:
+    return StageResult(
+        stage_name="lint",
+        status=StageStatus.PASS,
+        failure_mode=FailureMode.HARD,
+        duration_ms=0,
+    )
+
+
+def test_runner_halts_on_hard_failure(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.FAIL),
+        _make_stage("security", 3, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+
+    result = runner.run()
+
+    assert not result.success
+    assert [stage.stage_name for stage in result.results] == ["lint", "test"]
+
+
+def test_runner_force_allows_hard_failure(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.FAIL),
+        _make_stage("security", 3, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+
+    result = runner.run(force=True)
+
+    assert result.success
+    assert [stage.stage_name for stage in result.results] == ["lint", "test", "security"]
+
+
+def test_runner_soft_stage_warns_but_passes(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("docs", 2, failure_mode=FailureMode.SOFT, status=StageStatus.WARN),
+        _make_stage("security", 3, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+
+    result = runner.run()
+
+    statuses = [stage.status for stage in result.results]
+    assert result.success
+    assert statuses == [StageStatus.PASS, StageStatus.WARN, StageStatus.PASS]
+
+
+def test_runner_skips_agent_stage_when_unavailable(tmp_path: Path) -> None:
+    called: list[str] = []
+
+    def _agent_stage(_: StageContext) -> StageResult:  # pragma: no cover - should not be called
+        called.append("docs")
+        return StageResult(
+            stage_name="docs",
+            status=StageStatus.PASS,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=1,
+        )
+
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        PipelineStage(
+            order=2,
+            name="docs",
+            failure_mode=FailureMode.SOFT,
+            requires_agent=True,
+            executor=_agent_stage,
+        ),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages, agent_bridge=_AlwaysUnavailableAgent())
+
+    result = runner.run()
+
+    assert not called
+    assert result.results[-1].status == StageStatus.SKIP
+    assert result.results[-1].skipped_reason == "coding agent unavailable"
+
+
+def test_runner_idempotent_results(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS, duration_ms=10),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS, duration_ms=10),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+
+    first = runner.run()
+    second = runner.run()
+
+    first_signature = [(stage.stage_name, stage.status) for stage in first.results]
+    second_signature = [(stage.stage_name, stage.status) for stage in second.results]
+    assert first_signature == second_signature
+
+
+def test_runner_filters_unselected_stages(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+
+    result = runner.run(stages=["lint"])
+
+    assert result.results[1].status == StageStatus.SKIP
+    assert result.results[1].skipped_reason == "filtered via --stage"
+
+
+def test_runner_rejects_unknown_stage_selection(tmp_path: Path) -> None:
+    runner = PipelineRunner(
+        tmp_path,
+        stages=[_make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS)],
+    )
+
+    try:
+        runner.run(stages=["unknown"])
+    except ValueError as exc:  # pragma: no cover - exercised for branch coverage
+        assert "Unknown stage(s)" in str(exc)
+    else:  # pragma: no cover - ensures failure if exception missing
+        raise AssertionError("Expected ValueError for unknown stage")
+
+
+def test_runner_removes_skip_flag_on_success(tmp_path: Path) -> None:
+    skip_flag = tmp_path / ".dev-stack" / "pipeline-skipped"
+    skip_flag.parent.mkdir(parents=True)
+    skip_flag.write_text("pending", encoding="utf-8")
+    runner = PipelineRunner(
+        tmp_path,
+        stages=[_make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS)],
+    )
+
+    result = runner.run()
+
+    assert result.success
+    assert not skip_flag.exists()
+
+
+def test_run_parallel_executes_stages(monkeypatch, tmp_path: Path) -> None:
+    class _FakeFuture:
+        def __init__(self, value: StageResult) -> None:
+            self._value = value
+
+        def result(self) -> StageResult:
+            return self._value
+
+    class _FakeExecutor:
+        def __init__(self, max_workers: int) -> None:  # pragma: no cover - trivial
+            self.max_workers = max_workers
+
+        def __enter__(self) -> _FakeExecutor:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def submit(self, fn, *args):
+            return _FakeFuture(fn(*args))
+
+    def _fake_as_completed(futures):
+        for future in futures:
+            yield future
+
+    monkeypatch.setattr("dev_stack.pipeline.runner.ProcessPoolExecutor", _FakeExecutor)
+    monkeypatch.setattr("dev_stack.pipeline.runner.as_completed", _fake_as_completed)
+
+    runner = PipelineRunner(tmp_path)
+    stage = PipelineStage(
+        order=1,
+        name="lint",
+        failure_mode=FailureMode.HARD,
+        requires_agent=False,
+        executor=_parallel_executor,
+    )
+    context = StageContext(repo_root=tmp_path)
+
+    results = runner._run_parallel([stage], context)
+
+    assert results["lint"].status == StageStatus.PASS
+
+
+def test_runner_persists_state_file(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+
+    result = runner.run()
+
+    assert result.success
+    state_path = tmp_path / ".dev-stack" / "pipeline" / "last-run.json"
+    assert state_path.exists()
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    assert payload["success"] is True
+    assert payload["stages"], payload
+
+
+class _AlwaysUnavailableAgent:
+    def is_available(self) -> bool:
+        return False

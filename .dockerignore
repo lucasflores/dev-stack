@@ -1,0 +1,40 @@
+# VCS
+.git/
+.gitignore
+.dockerignore
+
+# Build descriptors
+Dockerfile*
+
+# Dependencies & build artifacts
+node_modules/
+__pycache__/
+*.py[cod]
+dist/
+build/
+.eggs/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local config & secrets
+.env
+.env.*
+*.env
+.specify/
+.dev-stack/
+.vscode/
+.idea/
+
+# Tests & coverage
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs & temp files
+*.log
+*.log*
+*.tmp

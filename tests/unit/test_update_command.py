@@ -1,0 +1,50 @@
+"""Unit tests for the dev-stack update command."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from dev_stack.cli.main import cli
+from dev_stack.manifest import create_default, write_manifest
+
+
+def test_update_requires_manifest() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+
+        result = runner.invoke(cli, ["update"])
+
+        assert result.exit_code == 1
+        assert "dev-stack.toml not found" in result.output
+
+
+def test_update_detects_incomplete_marker() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["hooks"])
+        manifest.modules["hooks"].version = "0.0.1"
+        write_manifest(manifest, Path("dev-stack.toml"))
+        marker = Path(".dev-stack/update-in-progress")
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("pending", encoding="utf-8")
+
+        result = runner.invoke(cli, ["--json", "update"])
+
+        assert result.exit_code == 1
+        assert "previous dev-stack update did not complete" in result.output.lower()
+
+
+def test_update_noop_when_versions_match() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["hooks"])
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        result = runner.invoke(cli, ["update"])
+
+        assert result.exit_code == 0
+        assert "No modules require updates." in result.output

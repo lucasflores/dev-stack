@@ -56,6 +56,57 @@ uv tool install -r pyproject.toml --link-mode=editable
 PYTHONPATH=src DEV_STACK_AGENT=none python -m dev_stack.cli.main --help
 ```
 
+## Install Dev-Stack In Your Repo
+
+> This flow is for consumers of the CLI: install the tool once, then run it inside any repository you want to bootstrap. The PyPI release is pending; until it lands, install from the wheel generated in `dist/`.
+
+### 1. Install the CLI globally
+
+```bash
+# (From the dev-stack source repo) build artifacts if needed
+uv build
+
+# Install the CLI from the local wheel
+uv tool install ./dist/dev_stack-0.1.0-py3-none-any.whl
+
+# Verify it is on your PATH
+dev-stack --version
+```
+
+🤝 Once the package is published to PyPI you can replace the wheel path with `uv tool install dev-stack`.
+
+### 2. Bootstrap a repository in-place
+
+```bash
+cd /path/to/your-repo
+git init  # or ensure an existing repo is clean
+
+# Let dev-stack detect the agent and scaffold everything
+dev-stack init --json
+
+# Optional safety checks
+dev-stack init --dry-run --json   # brownfield preview
+dev-stack status --json           # confirm module health
+```
+
+- Set `DEV_STACK_AGENT=<cli>` if the auto-detect order (`claude → gh copilot → cursor → none`) should be overridden.
+- Pass `--modules hooks,visualization` (or any subset) to control what gets installed.
+
+### 3. Review the generated assets
+
+| Path | Purpose |
+|------|---------|
+| `dev-stack.toml` | Stack manifest (modules, versions, rollback tag, detected agent) |
+| `.pre-commit-config.yaml` + `scripts/hooks/pre-commit` | Pre-commit hook that runs the six-stage automation pipeline |
+| `.specify/` | GitHub Spec Kit scaffold so `/speckit.*` commands work immediately |
+| `.github/workflows/dev-stack-*.yml` | CI workflows for tests, deploy, vulnerability scan |
+| `.claude/settings.local.json` or `.github/copilot-mcp.json` | MCP server configs targeted to the detected agent |
+| `.dev-stack/` | Internal state (visualization manifests, cache) — ignored by git |
+| `docs/diagrams/overview.svg` (plus per-node SVGs) | Agent-generated architecture diagrams |
+| `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment when the Docker module is selected |
+
+At this point commit the changes, run `dev-stack pipeline run --force` to prime the hooks, and keep the validation checklist handy for future releases.
+
 ## CLI Essentials
 
 | Command | What it does |

@@ -87,7 +87,11 @@ class PipelineStage:
 
 
 def build_pipeline_stages() -> list[PipelineStage]:
-    """Return the default pipeline stage sequence."""
+    """Return the default pipeline stage sequence.
+
+    8-stage pipeline: lint → typecheck → test → security → docs-api →
+    docs-narrative → infra-sync → commit-message.
+    """
 
     return [
         PipelineStage(
@@ -99,34 +103,48 @@ def build_pipeline_stages() -> list[PipelineStage]:
         ),
         PipelineStage(
             order=2,
+            name="typecheck",
+            failure_mode=FailureMode.HARD,
+            requires_agent=False,
+            executor=_execute_typecheck_stage,
+        ),
+        PipelineStage(
+            order=3,
             name="test",
             failure_mode=FailureMode.HARD,
             requires_agent=False,
             executor=_execute_test_stage,
         ),
         PipelineStage(
-            order=3,
+            order=4,
             name="security",
             failure_mode=FailureMode.HARD,
             requires_agent=False,
             executor=_execute_security_stage,
         ),
         PipelineStage(
-            order=4,
-            name="docs",
-            failure_mode=FailureMode.SOFT,
-            requires_agent=True,
-            executor=_execute_docs_stage,
+            order=5,
+            name="docs-api",
+            failure_mode=FailureMode.HARD,
+            requires_agent=False,
+            executor=_execute_docs_api_stage,
         ),
         PipelineStage(
-            order=5,
+            order=6,
+            name="docs-narrative",
+            failure_mode=FailureMode.SOFT,
+            requires_agent=True,
+            executor=_execute_docs_narrative_stage,
+        ),
+        PipelineStage(
+            order=7,
             name="infra-sync",
             failure_mode=FailureMode.SOFT,
             requires_agent=False,
             executor=_execute_infra_sync_stage,
         ),
         PipelineStage(
-            order=6,
+            order=8,
             name="commit-message",
             failure_mode=FailureMode.SOFT,
             requires_agent=True,
@@ -208,12 +226,142 @@ def _execute_security_stage(context: StageContext) -> StageResult:
     )
 
 
-def _execute_docs_stage(context: StageContext) -> StageResult:
+def _execute_typecheck_stage(context: StageContext) -> StageResult:
+    """Run mypy type checking against project source.
+
+    Placeholder — real implementation wired in T016/T018.
+    """
+    start = time.perf_counter()
+    if not shutil.which("mypy"):
+        return StageResult(
+            stage_name="typecheck",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="mypy not found, skipping type check",
+        )
+    success, output = _run_command(
+        ("python3", "-m", "mypy", "src/"),
+        context.repo_root,
+    )
+    return StageResult(
+        stage_name="typecheck",
+        status=StageStatus.PASS if success else StageStatus.FAIL,
+        failure_mode=FailureMode.HARD,
+        duration_ms=_elapsed_ms(start),
+        output=output,
+    )
+
+
+def _execute_docs_api_stage(context: StageContext) -> StageResult:
+    """Run Sphinx apidoc + build for deterministic API docs."""
+    import importlib.util
+
+    start = time.perf_counter()
+
+    # Graceful skip if Sphinx not installed
+    has_sphinx = shutil.which("sphinx-build") is not None
+    if not has_sphinx:
+        has_sphinx = importlib.util.find_spec("sphinx") is not None
+    if not has_sphinx:
+        return StageResult(
+            stage_name="docs-api",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="sphinx not found, skipping API docs",
+        )
+
+    # Check docs/ directory exists
+    docs_dir = context.repo_root / "docs"
+    if not docs_dir.is_dir():
+        return StageResult(
+            stage_name="docs-api",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="docs/ directory not found",
+        )
+
+    # Detect source package
+    pkg_name = _detect_src_package(context.repo_root)
+    if pkg_name is None:
+        return StageResult(
+            stage_name="docs-api",
+            status=StageStatus.PASS,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            output="No Python packages found in src/, nothing to document",
+        )
+
+    outputs: list[str] = []
+
+    # Deterministic build environment
+    env = {**os.environ, "SOURCE_DATE_EPOCH": "0"}
+
+    # Step 1: Generate .rst stubs via sphinx-apidoc
+    apidoc_cmd = (
+        "python3", "-m", "sphinx.ext.apidoc",
+        "-o", "docs/api", f"src/{pkg_name}",
+        "-f", "--module-first", "-e",
+    )
+    try:
+        apidoc_result = subprocess.run(
+            apidoc_cmd,
+            cwd=str(context.repo_root),
+            capture_output=True, text=True, check=False,
+            env=env,
+        )
+        apidoc_output = "\n".join(
+            p.strip() for p in (apidoc_result.stdout, apidoc_result.stderr) if p.strip()
+        )
+        outputs.append(f"$ {' '.join(apidoc_cmd)}\n{apidoc_output or 'ok'}")
+    except FileNotFoundError:
+        outputs.append("sphinx.ext.apidoc not found")
+
+    # Step 2: Build HTML
+    build_cmd = (
+        "python3", "-m", "sphinx",
+        "-b", "html", "-W", "--keep-going",
+        "docs", "docs/_build",
+    )
+    try:
+        build_result = subprocess.run(
+            build_cmd,
+            cwd=str(context.repo_root),
+            capture_output=True, text=True, check=False,
+            env=env,
+        )
+        build_output = "\n".join(
+            p.strip() for p in (build_result.stdout, build_result.stderr) if p.strip()
+        )
+        outputs.append(f"$ {' '.join(build_cmd)}\n{build_output or 'ok'}")
+        success = build_result.returncode == 0
+    except FileNotFoundError:
+        outputs.append("sphinx build command not found")
+        success = False
+
+    return StageResult(
+        stage_name="docs-api",
+        status=StageStatus.PASS if success else StageStatus.FAIL,
+        failure_mode=FailureMode.HARD,
+        duration_ms=_elapsed_ms(start),
+        output="\n\n".join(outputs),
+    )
+
+
+def _execute_docs_narrative_stage(context: StageContext) -> StageResult:
+    """Invoke the coding agent to produce narrative documentation in ``docs/guides/``.
+
+    This is a SOFT gate.  Agent unavailability results in SKIP, not FAIL.
+    Narrative docs live exclusively in ``docs/guides/`` — API reference is
+    handled by the deterministic ``docs-api`` stage.
+    """
     start = time.perf_counter()
     agent = context.agent_bridge
     if agent is None or not agent.is_available():
         return StageResult(
-            stage_name="docs",
+            stage_name="docs-narrative",
             status=StageStatus.SKIP,
             failure_mode=FailureMode.SOFT,
             duration_ms=_elapsed_ms(start),
@@ -221,7 +369,7 @@ def _execute_docs_stage(context: StageContext) -> StageResult:
         )
     if not PROMPT_TEMPLATE.exists():
         return StageResult(
-            stage_name="docs",
+            stage_name="docs-narrative",
             status=StageStatus.SKIP,
             failure_mode=FailureMode.SOFT,
             duration_ms=_elapsed_ms(start),
@@ -230,34 +378,43 @@ def _execute_docs_stage(context: StageContext) -> StageResult:
     diff_text = _read_git_diff(context.repo_root)
     if not diff_text.strip():
         return StageResult(
-            stage_name="docs",
+            stage_name="docs-narrative",
             status=StageStatus.SKIP,
             failure_mode=FailureMode.SOFT,
             duration_ms=_elapsed_ms(start),
             skipped_reason="no staged changes detected",
         )
-    readme_path = context.repo_root / "README.md"
-    if not readme_path.exists():
-        readme_path.write_text("# Project Documentation\n\n", encoding="utf-8")
-    existing_section = _read_managed_section(readme_path)
+
+    # Ensure docs/guides/ directory exists
+    guides_dir = context.repo_root / "docs" / "guides"
+    guides_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read existing narrative content (if managed section exists in guides)
+    guides_index = guides_dir / "index.md"
+    existing_section = ""
+    if guides_index.exists():
+        existing_section = guides_index.read_text(encoding="utf-8")
+
     prompt = _render_docs_prompt(diff_text, existing_section, context.repo_root.name)
     response = agent.invoke(prompt, json_output=False, timeout_seconds=120)
     if not response.success:
         message = response.error or response.content or "Documentation agent failed"
         return StageResult(
-            stage_name="docs",
+            stage_name="docs-narrative",
             status=StageStatus.WARN,
             failure_mode=FailureMode.SOFT,
             duration_ms=_elapsed_ms(start),
             output=message,
         )
-    _write_managed_section(readme_path, response.content.strip())
+
+    # Write agent output to docs/guides/
+    guides_index.write_text(response.content.strip() + "\n", encoding="utf-8")
     return StageResult(
-        stage_name="docs",
+        stage_name="docs-narrative",
         status=StageStatus.PASS,
         failure_mode=FailureMode.SOFT,
         duration_ms=_elapsed_ms(start),
-        output=f"Updated documentation section in {readme_path.name}",
+        output=f"Updated narrative documentation in docs/guides/",
     )
 
 
@@ -379,6 +536,25 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
         duration_ms=_elapsed_ms(start),
         output=f"Wrote commit message via {agent_name} to {output_path.relative_to(context.repo_root)}",
     )
+
+
+def _detect_src_package(repo_root: Path) -> str | None:
+    """Find the first Python package under ``src/``.
+
+    Scans ``repo_root / "src"`` for subdirectories containing an
+    ``__init__.py`` file.  Returns the first match sorted alphabetically
+    for determinism.  Returns ``None`` if no package is found or ``src/``
+    does not exist.
+    """
+    src_dir = repo_root / "src"
+    if not src_dir.is_dir():
+        return None
+    candidates = sorted(
+        d.name
+        for d in src_dir.iterdir()
+        if d.is_dir() and (d / "__init__.py").is_file()
+    )
+    return candidates[0] if candidates else None
 
 
 def _run_command(command: Sequence[str], cwd: Path) -> tuple[bool, str]:

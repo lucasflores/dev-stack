@@ -43,11 +43,13 @@ class SchemaGenerator:
         except json.JSONDecodeError:  # pragma: no cover - defensive
             return None
 
-    def generate_overview(self, source_snapshot: Path) -> SchemaResult:
+    def generate_overview(self, source_snapshot: Path, *, timeout_seconds: int | None = None) -> SchemaResult:
         prompt = OVERVIEW_PROMPT.replace("{SOURCE}", source_snapshot.read_text(encoding="utf-8"))
         cached = self.load_cached_schema()
         try:
-            response = self.agent_bridge.invoke(prompt, json_output=True)
+            response = self.agent_bridge.invoke(
+                prompt, json_output=True, timeout_seconds=timeout_seconds or 120
+            )
         except AgentUnavailableError as exc:
             raise SchemaGenerationError(str(exc), cached_schema=cached) from exc
         if not response.success or not response.json_data:

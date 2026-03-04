@@ -20,6 +20,8 @@ def test_init_json_contract() -> None:
         assert payload["mode"] in {"greenfield", "reinit", "brownfield"}
         assert payload["manifest_path"].endswith("dev-stack.toml")
         assert "hooks" in payload["modules_installed"]
+        assert "uv_project" in payload["modules_installed"]
+        assert "sphinx_docs" in payload["modules_installed"]
         assert "conflicts" in payload
         manifest_path = Path(payload["manifest_path"])
         assert manifest_path.exists()
@@ -71,6 +73,8 @@ def test_status_json_contract() -> None:
         assert payload["agent"]["cli"], payload
         assert isinstance(payload["modules"], dict)
         assert "hooks" in payload["modules"]
+        assert "uv_project" in payload["modules"]
+        assert "sphinx_docs" in payload["modules"]
         assert "last_pipeline_run" in payload
 
 

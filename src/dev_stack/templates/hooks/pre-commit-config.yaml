@@ -17,3 +17,9 @@ repos:
         entry: pytest -q
         language: system
         pass_filenames: false
+      - id: dev-stack-mypy
+        name: mypy type check
+        entry: python3 -m mypy src/
+        language: system
+        pass_filenames: false
+        types: [python]

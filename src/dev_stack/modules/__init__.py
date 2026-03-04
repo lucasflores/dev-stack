@@ -12,7 +12,7 @@ from .base import ModuleBase
 ModuleClass = Type[ModuleBase]
 
 _MODULE_REGISTRY: Dict[str, ModuleClass] = {}
-DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("hooks", "speckit")
+DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "speckit")
 
 
 def register_module(cls: ModuleClass) -> ModuleClass:
@@ -95,4 +95,4 @@ def latest_module_entries(module_names: Sequence[str] | None = None) -> dict[str
 
 
 # Import built-in modules so they register themselves.
-from . import ci_workflows, docker, hooks, mcp_servers, speckit, visualization  # noqa: E402,F401
+from . import ci_workflows, docker, hooks, mcp_servers, speckit, sphinx_docs, uv_project, visualization  # noqa: E402,F401

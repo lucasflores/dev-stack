@@ -205,23 +205,28 @@ next begins.
 ### Pre-Commit Pipeline Execution Order
 
 1. **Linting** — Static analysis and code formatting checks.
-2. **Testing** — pytest suite (unit and integration tests as
+2. **Type Checking** — Mypy strict-mode type analysis against the
+   `src/` package tree.
+3. **Testing** — pytest suite (unit and integration tests as
    configured).
-3. **Security Audits** — Dependency vulnerability scanning and
+4. **Security Audits** — Dependency vulnerability scanning and
    secret detection.
-4. **Documentation Agent** — Auto-updates README, API docs,
-   and repository diagrams to reflect pending changes.
-5. **Infrastructure Sync** — Updates CI workflows, Dockerfile,
+5. **Docs API** — Deterministic Sphinx API reference build
+   (`sphinx-apidoc` + `sphinx-build` with `SOURCE_DATE_EPOCH=0`).
+6. **Docs Narrative** — Agent-driven narrative documentation
+   updates to `docs/guides/` (tutorials, quickstarts, architecture
+   walkthroughs). Does NOT generate API reference.
+7. **Infrastructure Sync** — Updates CI workflows, Dockerfile,
    and visualization diagrams if source changes warrant it.
-6. **Commit Message Agent** — Generates a structured commit
+8. **Commit Message Agent** — Generates a structured commit
    message encoding intent, reasoning, scope, spec/task
    references, and a summary optimized for agent memory retrieval.
 
 ### Pipeline Rules
 
-- If any stage (1–3) fails, the pipeline MUST halt and the commit
+- If any stage (1–5) fails, the pipeline MUST halt and the commit
   MUST be rejected with actionable error output.
-- Stages 4–6 are generative: they produce artifacts. If generation
+- Stages 6–8 are generative: they produce artifacts. If generation
   fails, the pipeline MUST warn but MAY allow the commit with a
   `--force` flag and a logged justification.
 - The pipeline MUST be skippable with an explicit `--no-hooks` flag

@@ -30,8 +30,17 @@ OVERVIEW_NAME = "overview"
     help="Directory (or file path) for rendered diagrams.",
 )
 @click.option("--format", "format_", type=click.Choice(["svg", "png"]), default="svg")
+@click.option(
+    "--agent-timeout",
+    type=int,
+    default=240,
+    show_default=True,
+    help="Seconds to wait for the coding agent before falling back to cache.",
+)
 @click.pass_obj
-def visualize(ctx: CLIContext, incremental: bool, output: Path, format_: str) -> None:
+def visualize(
+    ctx: CLIContext, incremental: bool, output: Path, format_: str, agent_timeout: int
+) -> None:
     repo_root = Path.cwd()
     scanner = SourceScanner(repo_root)
     scan_result = scanner.scan()
@@ -56,7 +65,9 @@ def visualize(ctx: CLIContext, incremental: bool, output: Path, format_: str) ->
 
     if schema_content is None:
         try:
-            schema_result = schema_generator.generate_overview(scan_result.destination)
+            schema_result = schema_generator.generate_overview(
+                scan_result.destination, timeout_seconds=agent_timeout
+            )
             schema_content = schema_result.content
             agent_invocations = 1
         except SchemaGenerationError as exc:

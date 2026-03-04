@@ -30,3 +30,16 @@ def test_brownfield_init_dry_run_reports_conflicts() -> None:
         assert result.exit_code == 0, result.output
         assert "Dry run summary" in result.output
         assert not Path("dev-stack.toml").exists()
+
+
+def test_brownfield_docs_conflict_detected() -> None:
+    """Pre-existing docs/conf.py should be flagged as a brownfield conflict."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        docs = Path("docs")
+        docs.mkdir()
+        (docs / "conf.py").write_text("# existing sphinx conf\n", encoding="utf-8")
+
+        result = runner.invoke(cli, ["--dry-run", "init"])
+        assert result.exit_code == 0, result.output
+        assert "Dry run summary" in result.output

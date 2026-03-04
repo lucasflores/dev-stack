@@ -1,97 +1,13 @@
 # Base template for dev-stack overview diagrams.
-# Theme: Infra console — dark canvas, neon accents, strong flow emphasis.
+# Keep syntax compatible with D2 v0.7+ (no deprecated style keys).
 
 direction: right
-grid: 0
-spacing: 2.8
-
-style {
-	background: "#040810"
-	fill: "#040810"
-	stroke: "#0d1b2a"
-}
-
-classes {
-	.panel {
-		shape: rectangle
-		style.fill: "#050f21"
-		style.stroke: "#0f1f33"
-		style.round: 18
-		style.shadow-color: "#0ff1ce33"
-		style.shadow-blur: 60
-		style.padding: 24
-	}
-
-	.legend_panel {
-		shape: rectangle
-		style.fill: "#07152d"
-		style.stroke: "#123354"
-		style.round: 12
-		style.padding: 18
-		style.shadow-color: "#14f4f855"
-		style.shadow-blur: 40
-		label: "Legend"
-	}
-
-	.entry_node {
-		shape: rectangle
-		style.fill: "#081b34"
-		style.stroke: "#1ed3ff"
-		style.round: 10
-		style.padding: 14
-		style.shadow-color: "#1ed3ff55"
-		style.shadow-blur: 30
-	}
-
-	.feature_node {
-		shape: rectangle
-		style.fill: "#091427"
-		style.stroke: "#4d7cfe"
-		style.round: 12
-		style.padding: 16
-		style.shadow-color: "#4d7cfe40"
-		style.shadow-blur: 30
-	}
-
-	.terminal_node {
-		shape: rectangle
-		style.fill: "#0a101f"
-		style.stroke: "#f472b6"
-		style.round: 12
-		style.padding: 14
-		style.shadow-color: "#f472b640"
-		style.shadow-blur: 24
-	}
-
-	.flow_link {
-		style.stroke: "#13d6ff"
-		style.stroke-width: 3
-		style.marker-end: arrow
-		style.arrowhead: "block"
-		style.shadow-color: "#13d6ff55"
-		style.shadow-blur: 20
-	}
-
-	.flow_link_secondary {
-		style.stroke: "#f472b6"
-		style.stroke-width: 2.2
-		style.marker-end: arrow
-		style.arrowhead: "triangle"
-		style.shadow-color: "#f472b640"
-		style.shadow-blur: 16
-	}
-}
+spacing: 3.2
 
 diagram {
-	grid_panel: {
-		class: panel
-		label: ""
-		description: ""
+	legend: {
+		label: "Legend"
+		description: "Entry nodes kick off flows, feature blocks transform data, terminals emit insights."
+		note: "Status badges: [added], [updated], blank = steady"
 	}
 
-	legend: {
-		class: legend_panel
-		note: "Nodes\n╺ Entry (cyan)\n╺ Feature (indigo)\n╺ Outcome (pink)\n\nStatus LEDs\n● added  ● updated  ○ steady\n\nFlows\n⟶ primary path (cyan glow)\n⟶ secondary (pink)"
-		tooltip: "Infra console palette"
-		near: grid_panel.ne
-	}

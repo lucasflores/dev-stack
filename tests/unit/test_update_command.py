@@ -41,10 +41,41 @@ def test_update_noop_when_versions_match() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["hooks"])
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "speckit"])
         write_manifest(manifest, Path("dev-stack.toml"))
 
         result = runner.invoke(cli, ["update"])
 
         assert result.exit_code == 0
         assert "No modules require updates." in result.output
+
+
+def test_update_prompts_for_new_default_modules() -> None:
+    """FR-032: new default modules are offered interactively, never auto-installed."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        # Legacy manifest with only hooks — no uv_project, sphinx_docs, or speckit
+        manifest = create_default(["hooks"])
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        # Decline all new module prompts
+        result = runner.invoke(cli, ["update"], input="n\nn\nn\n")
+
+        assert result.exit_code == 0
+        assert "New modules are available" in result.output
+        assert "No new modules selected" in result.output
+
+
+def test_update_json_mode_skips_new_module_prompt() -> None:
+    """In --json mode the interactive prompt must not appear."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["hooks"])
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        result = runner.invoke(cli, ["--json", "update"])
+
+        assert result.exit_code == 0
+        assert "New modules are available" not in result.output

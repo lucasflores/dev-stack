@@ -12,8 +12,9 @@ from dev_stack.pipeline.stages import (
     StageResult,
     StageStatus,
     _execute_commit_stage,
-    _execute_docs_stage,
+    _execute_docs_narrative_stage,
     _execute_infra_sync_stage,
+    build_pipeline_stages,
 )
 
 
@@ -70,7 +71,7 @@ def test_execute_commit_stage_writes_commit_message(monkeypatch, repo_root: Path
     assert "Pipeline: lint=pass, test=pass" in contents
 
 
-def test_execute_docs_stage_updates_readme(monkeypatch, repo_root: Path) -> None:
+def test_execute_docs_narrative_stage_updates_guides(monkeypatch, repo_root: Path) -> None:
     response = AgentResponse(
         success=True,
         content="## Release Notes\nDocumented changes",
@@ -81,22 +82,22 @@ def test_execute_docs_stage_updates_readme(monkeypatch, repo_root: Path) -> None
     context = StageContext(repo_root=repo_root, agent_bridge=_FakeAgent(response))
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "diff --git")
 
-    result = _execute_docs_stage(context)
+    result = _execute_docs_narrative_stage(context)
 
-    readme = repo_root / "README.md"
+    guides_index = repo_root / "docs" / "guides" / "index.md"
     assert result.status == StageStatus.PASS
-    assert readme.exists()
-    assert "Documented changes" in readme.read_text(encoding="utf-8")
+    assert guides_index.exists()
+    assert "Documented changes" in guides_index.read_text(encoding="utf-8")
 
 
-def test_execute_docs_stage_skips_when_template_missing(monkeypatch, repo_root: Path) -> None:
+def test_execute_docs_narrative_stage_skips_when_template_missing(monkeypatch, repo_root: Path) -> None:
     response = AgentResponse(success=True, content="irrelevant", json_data=None, agent_cli="claude", duration_ms=1)
     context = StageContext(repo_root=repo_root, agent_bridge=_FakeAgent(response))
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "diff --git")
     missing_template = repo_root / "missing.txt"
     monkeypatch.setattr("dev_stack.pipeline.stages.PROMPT_TEMPLATE", missing_template)
 
-    result = _execute_docs_stage(context)
+    result = _execute_docs_narrative_stage(context)
 
     assert result.status == StageStatus.SKIP
     assert result.skipped_reason == "documentation template missing"
@@ -152,3 +153,24 @@ def test_execute_infra_sync_stage_detects_drift(repo_root: Path) -> None:
 
     assert result.status == StageStatus.WARN
     assert "scripts/hooks/pre-commit" in result.output
+
+
+def test_build_pipeline_stages_returns_eight_stages() -> None:
+    stages = build_pipeline_stages()
+    assert len(stages) == 8
+
+    expected = [
+        (1, "lint", FailureMode.HARD, False),
+        (2, "typecheck", FailureMode.HARD, False),
+        (3, "test", FailureMode.HARD, False),
+        (4, "security", FailureMode.HARD, False),
+        (5, "docs-api", FailureMode.HARD, False),
+        (6, "docs-narrative", FailureMode.SOFT, True),
+        (7, "infra-sync", FailureMode.SOFT, False),
+        (8, "commit-message", FailureMode.SOFT, True),
+    ]
+    for stage, (order, name, mode, agent) in zip(stages, expected):
+        assert stage.order == order
+        assert stage.name == name
+        assert stage.failure_mode == mode
+        assert stage.requires_agent == agent

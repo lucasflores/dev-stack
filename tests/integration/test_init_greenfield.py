@@ -22,6 +22,16 @@ def test_greenfield_init_creates_expected_files() -> None:
         assert manifest["stack"]["version"] == "0.1.0"
         assert manifest["modules"]["hooks"]["installed"] is True
 
+        # UV project artifacts
+        assert manifest["modules"]["uv_project"]["installed"] is True
+        assert Path("pyproject.toml").exists()
+
+        # Sphinx docs artifacts
+        assert manifest["modules"]["sphinx_docs"]["installed"] is True
+        assert Path("docs/conf.py").exists()
+        assert Path("docs/index.rst").exists()
+        assert Path("docs/Makefile").exists()
+
         hook_script = Path("scripts/hooks/pre-commit")
         git_hook = Path(".git/hooks/pre-commit")
         config_file = Path(".pre-commit-config.yaml")

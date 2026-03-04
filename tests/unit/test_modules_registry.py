@@ -77,3 +77,16 @@ def test_cyclical_dependency_detection(registry) -> None:
 
     with pytest.raises(modules.DependencyError):
         modules.resolve_module_names(["cycle"], include_defaults=False)
+
+
+def test_default_greenfield_modules_include_new_modules() -> None:
+    assert modules.DEFAULT_GREENFIELD_MODULES == ("uv_project", "sphinx_docs", "hooks", "speckit")
+
+
+def test_resolve_default_modules_respect_dependency_order() -> None:
+    resolved = modules.resolve_module_names()
+    # uv_project must come before sphinx_docs (dependency)
+    assert resolved.index("uv_project") < resolved.index("sphinx_docs")
+    # All four defaults present
+    for name in ("uv_project", "sphinx_docs", "hooks", "speckit"):
+        assert name in resolved

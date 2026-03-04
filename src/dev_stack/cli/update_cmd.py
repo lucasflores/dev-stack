@@ -17,6 +17,7 @@ from ..brownfield.rollback import create_rollback_tag
 from ..errors import ManifestError
 from ..manifest import ModuleDelta, ModuleEntry, StackManifest, read_manifest, write_manifest
 from ..modules import instantiate_modules, latest_module_entries, resolve_module_names
+from ..modules import DEFAULT_GREENFIELD_MODULES
 from ..modules.base import ModuleBase
 from ._constants import MANIFEST_FILENAME
 from ._shared import (
@@ -68,6 +69,12 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
                 "No modules installed. Use --modules to specify which modules to add.",
                 exit_code=ExitCode.GENERAL_ERROR,
             )
+
+    # FR-032: Detect new default modules not yet installed and prompt the user.
+    if not requested_modules and not ctx.json_output:
+        opted_in = _prompt_new_modules(manifest, ctx)
+        if opted_in:
+            module_names = resolve_module_names(module_names + opted_in, include_defaults=False)
 
     latest_entries = latest_module_entries(module_names or None)
     delta = manifest.diff_modules(latest_entries, module_names or None)
@@ -234,3 +241,26 @@ def _start_update_marker(marker_path: Path) -> None:
         datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         encoding="utf-8",
     )
+
+
+def _prompt_new_modules(manifest: StackManifest, ctx: CLIContext) -> list[str]:
+    """Detect default modules not yet installed and interactively offer them.
+
+    Returns the list of module names the user opted in to.
+    New modules are NEVER auto-installed (FR-032).
+    """
+    installed = set(manifest.modules.keys())
+    new_defaults = [m for m in DEFAULT_GREENFIELD_MODULES if m not in installed]
+    if not new_defaults:
+        return []
+
+    click.echo("\nNew modules are available since your last init:")
+    opted_in: list[str] = []
+    for name in new_defaults:
+        if click.confirm(f"  Install '{name}'?", default=False):
+            opted_in.append(name)
+    if opted_in:
+        click.echo(f"  → Adding: {', '.join(opted_in)}")
+    else:
+        click.echo("  → No new modules selected.")
+    return opted_in

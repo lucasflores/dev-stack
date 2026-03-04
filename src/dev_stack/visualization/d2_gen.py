@@ -7,12 +7,6 @@ from typing import Any, Iterable
 
 TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "overview.d2"
 
-NODE_CLASS = {
-    "entry_point": "entry_node",
-    "feature_block": "feature_node",
-    "end": "terminal_node",
-}
-
 STATUS_BADGE = {
     "added": "[added]",
     "updated": "[updated]",
@@ -34,15 +28,7 @@ STATUS_STYLE = {
 }
 
 HIGHLIGHT_STYLE = {
-    "style.shadow-color": "#13f2ff",
-    "style.shadow-blur": 60,
     "style.stroke-width": 3.2,
-}
-
-FLOW_CLASS = {
-    "added": "flow_link",
-    "updated": "flow_link",
-    "unchanged": "flow_link_secondary",
 }
 
 FLOW_STYLE = {
@@ -106,11 +92,9 @@ class D2Generator:
         description = node.get("description", "")
         tooltip = self._format_tooltip(node.get("files", []))
         note = self._format_note(node.get("files", []))
-        node_class = self._node_class(node)
         highlighted = self._is_highlighted(node, highlight)
 
         block_lines = [f"  {node_id} {{", f"    label: \"{self._escape(self._with_badge(label, badge))}\""]
-        block_lines.append(f"    class: {node_class}")
         if description:
             block_lines.append(f"    description: \"{self._escape(description)}\"")
         if tooltip:
@@ -130,8 +114,7 @@ class D2Generator:
             return None
         description = flow.get("description", "")
         status = flow.get("status", DEFAULT_STATUS)
-        flow_class = FLOW_CLASS.get(status, "flow_link")
-        block_lines = [f"  {start} -> {end} {{", f"    class: {flow_class}"]
+        block_lines = [f"  {start} -> {end} {{"]
         if description:
             block_lines.append(f"    label: \"{self._escape(description)}\"")
         self._append_styles(block_lines, FLOW_STYLE.get(status, {}))
@@ -211,10 +194,6 @@ class D2Generator:
             if file_ref.get("file"):
                 return str(file_ref["file"])
         return node.get("id") or node.get("name") or f"node_{index}"
-
-    def _node_class(self, node: dict[str, Any]) -> str:
-        node_type = node.get("type")
-        return NODE_CLASS.get(node_type, "feature_node")
 
     def _is_highlighted(self, node: dict[str, Any], highlight: set[str]) -> bool:
         files = node.get("files", [])

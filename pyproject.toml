@@ -40,7 +40,6 @@ where = ["src"]
 [tool.setuptools.package-data]
 "dev_stack" = [
   "templates/**/*",
-  "visualization/templates/*.d2",
 ]
 
 [tool.pytest.ini_options]

@@ -69,3 +69,22 @@ def test_update_and_verify_signatures_match_contract() -> None:
         params = list(verify_sig.parameters.values())
         assert len(params) == 1 and params[0].name == "self"
         assert _annotation_matches(verify_sig.return_annotation, ModuleStatus)
+
+
+def test_visualization_module_identity() -> None:
+    """Verify VisualizationModule exposes correct NAME, VERSION, and MANAGED_FILES."""
+
+    from dev_stack.modules.visualization import VisualizationModule
+
+    assert VisualizationModule.NAME == "visualization"
+    assert VisualizationModule.VERSION == "1.0.0"
+    assert ".codeboarding" in VisualizationModule.MANAGED_FILES[0]
+    assert ".dev-stack/viz" in VisualizationModule.MANAGED_FILES[1]
+
+
+def test_visualization_module_is_registered() -> None:
+    """Confirm the visualization module is in the module registry."""
+
+    from dev_stack.modules import _MODULE_REGISTRY
+
+    assert "visualization" in _MODULE_REGISTRY

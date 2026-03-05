@@ -1,161 +1,209 @@
-"""Visualization CLI."""
+"""Visualization CLI — CodeBoarding integration."""
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
+import logging
 from pathlib import Path
 
 import click
 
-from ..errors import DependencyError
-from ..pipeline.agent_bridge import AgentBridge
-from ..visualization.d2_gen import D2Generator
-from ..visualization.incremental import ManifestStore
-from ..visualization.schema_gen import SchemaGenerationError, SchemaGenerator
-from ..visualization.scanner import SourceScanner
+from ..errors import CodeBoardingError
+from ..modules.visualization import (
+    CODEBOARDING_OUTPUT_DIR,
+    DEFAULT_DEPTH_LEVEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    INJECTION_LEDGER,
+)
+from ..visualization import codeboarding_runner
+from ..visualization.output_parser import extract_mermaid, parse_components
+from ..visualization.readme_injector import (
+    InjectionLedger,
+    inject_root_diagram,
+)
 from .main import CLIContext, ExitCode, cli
 
-DEFAULT_OUTPUT_DIR = Path("docs/diagrams")
-D2_SOURCE_PATH = Path(".dev-stack/viz/overview.d2")
-OVERVIEW_NAME = "overview"
+logger = logging.getLogger(__name__)
 
 
 @cli.command("visualize")
-@click.option("--incremental", is_flag=True, help="Only process changed files.")
+@click.option("--incremental", is_flag=True, help="Only re-analyze changed files.")
 @click.option(
-    "--output",
-    type=click.Path(path_type=Path),
-    default=DEFAULT_OUTPUT_DIR,
-    help="Directory (or file path) for rendered diagrams.",
-)
-@click.option("--format", "format_", type=click.Choice(["svg", "png"]), default="svg")
-@click.option(
-    "--agent-timeout",
+    "--depth-level",
     type=int,
-    default=240,
+    default=DEFAULT_DEPTH_LEVEL,
     show_default=True,
-    help="Seconds to wait for the coding agent before falling back to cache.",
+    help="Number of decomposition levels (1 = top-level only).",
+)
+@click.option("--no-readme", is_flag=True, help="Run analysis without injecting diagrams into READMEs.")
+@click.option(
+    "--timeout",
+    type=int,
+    default=DEFAULT_TIMEOUT_SECONDS,
+    show_default=True,
+    help="Subprocess timeout in seconds for CodeBoarding CLI.",
 )
 @click.pass_obj
 def visualize(
-    ctx: CLIContext, incremental: bool, output: Path, format_: str, agent_timeout: int
+    ctx: CLIContext,
+    incremental: bool,
+    depth_level: int,
+    no_readme: bool,
+    timeout: int,
 ) -> None:
+    """Generate architecture diagrams via CodeBoarding and inject into READMEs."""
+
     repo_root = Path.cwd()
-    scanner = SourceScanner(repo_root)
-    scan_result = scanner.scan()
+    cb_dir = repo_root / CODEBOARDING_OUTPUT_DIR
+
+    # ------------------------------------------------------------------
+    # Step 1: Verify CLI availability
+    # ------------------------------------------------------------------
+
+    if not codeboarding_runner.check_cli_available():
+        _emit_error(
+            ctx,
+            "CodeBoarding CLI not found on PATH.\nInstall via: pip install codeboarding\nThen run: codeboarding-setup",
+            exit_code=ExitCode.AGENT_UNAVAILABLE,
+        )
+        raise SystemExit(ExitCode.AGENT_UNAVAILABLE)
+
+    # ------------------------------------------------------------------
+    # Step 2: Incremental gate (if requested)
+    # ------------------------------------------------------------------
+
+    from ..visualization.incremental import ManifestStore
+    from ..visualization.scanner import SourceScanner
 
     manifest_store = ManifestStore(repo_root)
-    previous_manifest = manifest_store.load_manifest()
-    current_manifest = manifest_store.build_manifest(scan_result.snapshots)
-    changed_paths = manifest_store.changed_paths(previous_manifest, current_manifest)
 
-    agent_bridge = AgentBridge(repo_root)
-    schema_generator = SchemaGenerator(repo_root, agent_bridge, cache_path=manifest_store.schema_path)
-    schema_content = None
-    used_cache_only = False
-    fallback_mode = False
-    agent_invocations = 0
+    if incremental:
+        scanner = SourceScanner(repo_root)
+        scan_result = scanner.scan()
+        previous = manifest_store.load_manifest()
+        current = manifest_store.build_manifest(scan_result.snapshots)
+        changed_paths = manifest_store.changed_paths(previous, current)
 
-    if incremental and not changed_paths:
-        cached = manifest_store.load_schema()
-        if cached:
-            schema_content = cached
-            used_cache_only = True
-
-    if schema_content is None:
-        try:
-            schema_result = schema_generator.generate_overview(
-                scan_result.destination, timeout_seconds=agent_timeout
-            )
-            schema_content = schema_result.content
-            agent_invocations = 1
-        except SchemaGenerationError as exc:
-            if exc.cached_schema:
-                schema_content = exc.cached_schema
-                fallback_mode = True
+        if not changed_paths:
+            payload = {
+                "status": "success",
+                "skipped": True,
+                "reason": "No files changed since last run",
+                "files_scanned": len(current.files),
+                "files_changed": 0,
+                "incremental": True,
+            }
+            if ctx.json_output:
+                click.echo(json.dumps(payload))
             else:
-                _emit_error(ctx, str(exc))
-                raise SystemExit(ExitCode.AGENT_UNAVAILABLE)
+                click.echo("All diagrams up to date (no files changed).")
+            return
 
-    manifest_store.save_manifest(current_manifest)
-
-    generator = D2Generator(repo_root)
-    diagram_dir, render_path, json_path = _resolve_output_paths(repo_root, output, format_)
-    highlight_paths = changed_paths if changed_paths else set()
-    d2_text = generator.render_overview(schema_content, highlight_paths=highlight_paths)
-
-    d2_source = repo_root / D2_SOURCE_PATH
-    d2_source.parent.mkdir(parents=True, exist_ok=True)
-    d2_source.write_text(d2_text, encoding="utf-8")
+    # ------------------------------------------------------------------
+    # Step 3: Invoke CodeBoarding
+    # ------------------------------------------------------------------
 
     try:
-        _render_d2(d2_source, render_path, format_)
-    except DependencyError as exc:
-        _emit_error(ctx, str(exc))
+        result = codeboarding_runner.run(
+            repo_root,
+            depth_level=depth_level,
+            incremental=incremental,
+            timeout=timeout,
+        )
+    except CodeBoardingError as exc:
+        _emit_error(ctx, str(exc), exit_code=ExitCode.GENERAL_ERROR)
         raise SystemExit(ExitCode.GENERAL_ERROR)
 
-    generator.render_json(schema_content, output_path=json_path, highlight_paths=highlight_paths)
+    if not result.success:
+        msg = f"CodeBoarding exited with code {result.return_code}:\n{result.stderr}"
+        _emit_error(ctx, msg, exit_code=ExitCode.GENERAL_ERROR)
+        raise SystemExit(ExitCode.GENERAL_ERROR)
 
-    render_rel = _rel_path(render_path, repo_root)
-    schema_rel = _rel_path(json_path, repo_root)
+    # ------------------------------------------------------------------
+    # Step 4: Parse output
+    # ------------------------------------------------------------------
+
+    try:
+        components = parse_components(cb_dir)
+    except CodeBoardingError as exc:
+        _emit_error(ctx, str(exc), exit_code=ExitCode.GENERAL_ERROR)
+        raise SystemExit(ExitCode.GENERAL_ERROR)
+
+    # Extract overview Mermaid
+    overview_mermaid = extract_mermaid(cb_dir / "overview.md")
+    warnings: list[str] = []
+    if overview_mermaid is None:
+        warnings.append("No Mermaid diagram found in .codeboarding/overview.md")
+
+    # ------------------------------------------------------------------
+    # Step 5 & 6: Inject diagrams (unless --no-readme)
+    # ------------------------------------------------------------------
+
+    readmes_modified: list[str] = []
+    diagrams_injected = 0
+    ledger = InjectionLedger.load(cb_dir / INJECTION_LEDGER)
+    ledger.clear()
+
+    if not no_readme and overview_mermaid:
+        if inject_root_diagram(repo_root, overview_mermaid, ledger):
+            readmes_modified.append("README.md")
+        diagrams_injected += 1
+
+    # Sub-diagrams (Phase 5 will wire inject_component_diagrams here)
+    if not no_readme:
+        from ..visualization.readme_injector import inject_component_diagrams
+
+        comp_result = inject_component_diagrams(repo_root, components, ledger)
+        diagrams_injected += comp_result["diagrams_injected"]
+        readmes_modified.extend(comp_result["readmes_modified"])
+
+    # ------------------------------------------------------------------
+    # Step 7: Save ledger and manifest
+    # ------------------------------------------------------------------
+
+    if not no_readme:
+        ledger.save(cb_dir / INJECTION_LEDGER)
+
+    # Always save manifest for future incremental comparisons
+    try:
+        scanner = SourceScanner(repo_root)
+        scan_result = scanner.scan()
+        current = manifest_store.build_manifest(scan_result.snapshots)
+        manifest_store.save_manifest(current)
+    except Exception:  # pragma: no cover
+        logger.warning("Failed to save manifest for incremental tracking")
+
+    # ------------------------------------------------------------------
+    # Step 8: Report results
+    # ------------------------------------------------------------------
+
     payload = {
-        "status": "fallback" if fallback_mode else "success",
-        "diagrams": [
-            {
-                "name": OVERVIEW_NAME,
-                "path": render_rel,
-                "nodes": len(schema_content.get("nodes", [])),
-                "flows": len(schema_content.get("flows", [])),
-            }
-        ],
-        "schema_path": schema_rel,
-        "files_scanned": len(scan_result.snapshots),
-        "files_changed": len(changed_paths),
-        "agent_invocations": agent_invocations,
-        "cache_used": used_cache_only or fallback_mode,
-        "skipped_files": [_rel_path(path, repo_root) for path in scan_result.skipped],
+        "status": "success",
+        "depth_level": depth_level,
+        "components_found": len(components),
+        "diagrams_injected": diagrams_injected,
+        "readmes_modified": readmes_modified,
+        "incremental": incremental,
+        "skipped": False,
+        "codeboarding_output": str(CODEBOARDING_OUTPUT_DIR),
+        "warnings": warnings,
     }
 
     if ctx.json_output:
         click.echo(json.dumps(payload))
     else:
-        mode = "(fallback) " if fallback_mode else ""
-        click.echo(f"{mode}Visualization written to {render_rel}")
+        click.echo(f"Visualization complete:")
+        click.echo(f"  Components: {len(components)} found")
+        click.echo(f"  Diagrams: {diagrams_injected} injected")
+        if readmes_modified:
+            click.echo("  READMEs modified:")
+            for r in readmes_modified:
+                click.echo(f"    - {r}")
+        for w in warnings:
+            click.echo(f"  Warning: {w}")
 
 
-def _render_d2(source: Path, output: Path, format_: str) -> None:
-    d2_cli = shutil.which("d2")
-    if not d2_cli:
-        raise DependencyError("Visualization", "D2 CLI not found")
-    command = [d2_cli, str(source), str(output)]
-    if format_ == "png":
-        command.extend(["--format", "png"])
-    subprocess.run(command, check=True)
-
-
-def _emit_error(ctx: CLIContext, message: str) -> None:
+def _emit_error(ctx: CLIContext, message: str, *, exit_code: int = 1) -> None:
     if ctx.json_output:
-        click.echo(json.dumps({"status": "error", "message": message}))
+        click.echo(json.dumps({"status": "error", "message": message, "exit_code": exit_code}))
     else:
-        click.echo(message, err=True)
-
-
-def _resolve_output_paths(repo_root: Path, requested: Path, format_: str) -> tuple[Path, Path, Path]:
-    target = repo_root / requested
-    if target.suffix and target.suffix.lstrip(".") in {"svg", "png"}:
-        diagram_path = target
-        diagram_dir = diagram_path.parent
-    else:
-        diagram_dir = target
-        diagram_path = diagram_dir / f"{OVERVIEW_NAME}.{format_}"
-    diagram_dir.mkdir(parents=True, exist_ok=True)
-    json_path = diagram_dir / f"{OVERVIEW_NAME}.json"
-    return diagram_dir, diagram_path, json_path
-
-
-def _rel_path(path: Path, repo_root: Path) -> str:
-    try:
-        return str(path.relative_to(repo_root))
-    except ValueError:
-        return str(path)
+        click.echo(f"Error: {message}", err=True)

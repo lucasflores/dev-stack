@@ -51,4 +51,12 @@ class ConfigError(DevStackError):
     """Raised when configuration or environment validation fails."""
 
 
+class CodeBoardingError(DevStackError):
+    """Raised when the CodeBoarding subprocess fails or produces invalid output."""
+
+    def __init__(self, message: str, stderr: str | None = None) -> None:
+        self.stderr = stderr
+        super().__init__(message)
+
+
 del Iterable, Sequence, List

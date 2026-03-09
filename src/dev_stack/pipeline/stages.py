@@ -497,7 +497,22 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
         )
 
     agent_name = agent.detect()
-    pipeline_summary = _format_pipeline_summary(context.completed_results or [])
+
+    # Scope advisory check (FR-044, FR-045, FR-046) — informational only
+    from dev_stack.vcs.scope import check_scope
+
+    scope_advisory = check_scope(staged_files)
+    completed = list(context.completed_results or [])
+    if scope_advisory.triggered:
+        completed.append(StageResult(
+            stage_name="scope-check",
+            status=StageStatus.WARN,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=0,
+            output="; ".join(scope_advisory.reasons),
+        ))
+
+    pipeline_summary = _format_pipeline_summary(completed)
     spec_ref = _detect_spec_ref(context.repo_root)
     task_ref = _detect_task_ref(context.repo_root)
     prompt = _render_commit_prompt(

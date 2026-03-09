@@ -41,7 +41,7 @@ def test_update_noop_when_versions_match() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "speckit"])
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "vcs_hooks", "speckit"])
         write_manifest(manifest, Path("dev-stack.toml"))
 
         result = runner.invoke(cli, ["update"])
@@ -60,7 +60,7 @@ def test_update_prompts_for_new_default_modules() -> None:
         write_manifest(manifest, Path("dev-stack.toml"))
 
         # Decline all new module prompts
-        result = runner.invoke(cli, ["update"], input="n\nn\nn\n")
+        result = runner.invoke(cli, ["update"], input="n\nn\nn\nn\n")
 
         assert result.exit_code == 0
         assert "New modules are available" in result.output

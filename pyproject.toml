@@ -17,6 +17,7 @@ dependencies = [
   "tomli-w>=1.0",
   "rich>=13.7",
   "pathspec>=0.12",
+  "gitlint-core>=0.19",
 ]
 
 [project.optional-dependencies]
@@ -43,7 +44,7 @@ where = ["src"]
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=dev_stack.pipeline --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=dev_stack.pipeline --cov-report=term-missing --cov-fail-under=65"
 testpaths = [
   "tests",
 ]

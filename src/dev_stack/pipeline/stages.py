@@ -1,4 +1,5 @@
 """Pipeline stage definitions and executors."""
+
 from __future__ import annotations
 
 import hashlib
@@ -89,8 +90,8 @@ class PipelineStage:
 def build_pipeline_stages() -> list[PipelineStage]:
     """Return the default pipeline stage sequence.
 
-    8-stage pipeline: lint → typecheck → test → security → docs-api →
-    docs-narrative → infra-sync → commit-message.
+    9-stage pipeline: lint → typecheck → test → security → docs-api →
+    docs-narrative → infra-sync → visualize → commit-message.
     """
 
     return [
@@ -145,6 +146,13 @@ def build_pipeline_stages() -> list[PipelineStage]:
         ),
         PipelineStage(
             order=8,
+            name="visualize",
+            failure_mode=FailureMode.SOFT,
+            requires_agent=False,
+            executor=_execute_visualize_stage,
+        ),
+        PipelineStage(
+            order=9,
             name="commit-message",
             failure_mode=FailureMode.SOFT,
             requires_agent=True,
@@ -199,13 +207,28 @@ def _execute_test_stage(context: StageContext) -> StageResult:
     )
 
 
+def _find_venv_site_packages(repo_root: Path) -> Path | None:
+    """Return the site-packages directory inside a .venv, or None."""
+    venv_lib = repo_root / ".venv" / "lib"
+    if not venv_lib.is_dir():
+        return None
+    candidates = list(venv_lib.glob("python*/site-packages"))
+    return candidates[0] if candidates else None
+
+
 def _execute_security_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
-    commands = [
-        ("pip-audit", "--progress-spinner", "off"),
+    outputs: list[str] = []
+
+    pip_audit_cmd: list[str] = ["pip-audit", "--progress-spinner", "off"]
+    site_pkgs = _find_venv_site_packages(context.repo_root)
+    if site_pkgs:
+        pip_audit_cmd.extend(["--path", str(site_pkgs)])
+
+    commands: list[tuple[str, ...]] = [
+        tuple(pip_audit_cmd),
         ("detect-secrets", "scan", str(context.repo_root)),
     ]
-    outputs: list[str] = []
     for command in commands:
         success, output = _run_command(command, context.repo_root)
         outputs.append(f"$ {' '.join(command)}\n{output or 'ok'}")
@@ -301,15 +324,23 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
 
     # Step 1: Generate .rst stubs via sphinx-apidoc
     apidoc_cmd = (
-        "python3", "-m", "sphinx.ext.apidoc",
-        "-o", "docs/api", f"src/{pkg_name}",
-        "-f", "--module-first", "-e",
+        "python3",
+        "-m",
+        "sphinx.ext.apidoc",
+        "-o",
+        "docs/api",
+        f"src/{pkg_name}",
+        "-f",
+        "--module-first",
+        "-e",
     )
     try:
         apidoc_result = subprocess.run(
             apidoc_cmd,
             cwd=str(context.repo_root),
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
             env=env,
         )
         apidoc_output = "\n".join(
@@ -321,15 +352,23 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
 
     # Step 2: Build HTML
     build_cmd = (
-        "python3", "-m", "sphinx",
-        "-b", "html", "-W", "--keep-going",
-        "docs", "docs/_build",
+        "python3",
+        "-m",
+        "sphinx",
+        "-b",
+        "html",
+        "-W",
+        "--keep-going",
+        "docs",
+        "docs/_build",
     )
     try:
         build_result = subprocess.run(
             build_cmd,
             cwd=str(context.repo_root),
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
             env=env,
         )
         build_output = "\n".join(
@@ -457,6 +496,128 @@ def _execute_infra_sync_stage(context: StageContext) -> StageResult:
     )
 
 
+def _is_visualization_enabled(context: StageContext) -> bool:
+    """Check ``[tool.dev-stack.pipeline] visualize`` in pyproject.toml.  Default: True."""
+    import tomllib
+
+    pyproject = context.repo_root / "pyproject.toml"
+    if not pyproject.exists():
+        return True
+    try:
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        return data.get("tool", {}).get("dev-stack", {}).get("pipeline", {}).get("visualize", True)
+    except Exception:
+        return True
+
+
+def _execute_visualize_stage(context: StageContext) -> StageResult:
+    """Run CodeBoarding analysis and inject Mermaid diagrams into READMEs.
+
+    Soft gate — skips gracefully when CodeBoarding is absent or visualization
+    is disabled via config.
+    """
+    start = time.perf_counter()
+
+    if not _is_visualization_enabled(context):
+        return StageResult(
+            stage_name="visualize",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="visualization disabled in [tool.dev-stack.pipeline]",
+        )
+
+    # Check if visualization module is installed in the manifest
+    if context.manifest and "visualization" not in (context.manifest.modules or {}):
+        return StageResult(
+            stage_name="visualize",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="visualization module not installed",
+        )
+
+    from ..visualization.codeboarding_runner import check_cli_available, run as cb_run
+    from ..visualization.output_parser import parse_components
+    from ..visualization.readme_injector import (
+        InjectionLedger,
+        inject_component_diagrams,
+        inject_root_diagram,
+    )
+
+    if not check_cli_available():
+        return StageResult(
+            stage_name="visualize",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="CodeBoarding CLI not found — install with: pip install codeboarding",
+        )
+
+    outputs: list[str] = []
+    try:
+        result = cb_run(context.repo_root, incremental=True)
+        outputs.append(f"CodeBoarding: {'ok' if result.success else 'failed'}")
+        if not result.success:
+            outputs.append(result.stderr or result.stdout)
+            return StageResult(
+                stage_name="visualize",
+                status=StageStatus.FAIL,
+                failure_mode=FailureMode.SOFT,
+                duration_ms=_elapsed_ms(start),
+                output="\n".join(outputs),
+            )
+
+        codeboarding_dir = context.repo_root / ".codeboarding"
+        if not codeboarding_dir.is_dir():
+            return StageResult(
+                stage_name="visualize",
+                status=StageStatus.WARN,
+                failure_mode=FailureMode.SOFT,
+                duration_ms=_elapsed_ms(start),
+                output="CodeBoarding ran but .codeboarding/ directory not found",
+            )
+
+        components = parse_components(codeboarding_dir)
+        ledger_path = context.repo_root / ".dev-stack" / "viz" / "injection-ledger.json"
+        ledger = InjectionLedger.load(ledger_path)
+
+        # Inject root architecture diagram from the first mermaid found
+        root_mermaid = None
+        for comp in components:
+            if comp.mermaid:
+                root_mermaid = comp.mermaid
+                break
+
+        if root_mermaid:
+            inject_root_diagram(context.repo_root, root_mermaid, ledger)
+
+        stats = inject_component_diagrams(context.repo_root, components, ledger)
+        ledger.save(ledger_path)
+
+        outputs.append(f"Diagrams injected: {stats.get('diagrams_injected', 0)}")
+        outputs.append(f"READMEs modified: {len(stats.get('readmes_modified', []))}")
+
+    except Exception as exc:
+        outputs.append(f"Error: {exc}")
+        return StageResult(
+            stage_name="visualize",
+            status=StageStatus.FAIL,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            output="\n".join(outputs),
+        )
+
+    return StageResult(
+        stage_name="visualize",
+        status=StageStatus.PASS,
+        failure_mode=FailureMode.SOFT,
+        duration_ms=_elapsed_ms(start),
+        output="\n".join(outputs),
+    )
+
+
 def _execute_commit_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
     agent = context.agent_bridge
@@ -504,13 +665,15 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
     scope_advisory = check_scope(staged_files)
     completed = list(context.completed_results or [])
     if scope_advisory.triggered:
-        completed.append(StageResult(
-            stage_name="scope-check",
-            status=StageStatus.WARN,
-            failure_mode=FailureMode.SOFT,
-            duration_ms=0,
-            output="; ".join(scope_advisory.reasons),
-        ))
+        completed.append(
+            StageResult(
+                stage_name="scope-check",
+                status=StageStatus.WARN,
+                failure_mode=FailureMode.SOFT,
+                duration_ms=0,
+                output="; ".join(scope_advisory.reasons),
+            )
+        )
 
     pipeline_summary = _format_pipeline_summary(completed)
     spec_ref = _detect_spec_ref(context.repo_root)
@@ -565,15 +728,25 @@ def _detect_src_package(repo_root: Path) -> str | None:
     if not src_dir.is_dir():
         return None
     candidates = sorted(
-        d.name
-        for d in src_dir.iterdir()
-        if d.is_dir() and (d / "__init__.py").is_file()
+        d.name for d in src_dir.iterdir() if d.is_dir() and (d / "__init__.py").is_file()
     )
     return candidates[0] if candidates else None
 
 
+def _build_venv_env(cwd: Path) -> dict[str, str] | None:
+    """Build an env dict with ``.venv/bin`` prepended to PATH if a venv exists at *cwd*."""
+    venv_bin = cwd / ".venv" / "bin"
+    if not venv_bin.is_dir():
+        return None
+    env = {**os.environ}
+    env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
+    env["VIRTUAL_ENV"] = str(cwd / ".venv")
+    return env
+
+
 def _run_command(command: Sequence[str], cwd: Path) -> tuple[bool, str]:
-    if not shutil.which(command[0]):
+    env = _build_venv_env(cwd)
+    if not shutil.which(command[0], path=env.get("PATH") if env else None):
         return False, f"Command not found: {command[0]}"
     try:
         completed = subprocess.run(
@@ -582,6 +755,7 @@ def _run_command(command: Sequence[str], cwd: Path) -> tuple[bool, str]:
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
     except FileNotFoundError:
         return False, f"Command not found: {command[0]}"
@@ -679,7 +853,15 @@ def _render_commit_prompt(
 def _list_staged_files(repo_root: Path) -> list[str]:
     try:
         completed = subprocess.run(
-            ("git", "-C", str(repo_root), "diff", "--cached", "--name-only", "--diff-filter=ACMRTUXB"),
+            (
+                "git",
+                "-C",
+                str(repo_root),
+                "diff",
+                "--cached",
+                "--name-only",
+                "--diff-filter=ACMRTUXB",
+            ),
             capture_output=True,
             text=True,
             check=False,

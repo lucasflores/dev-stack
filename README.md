@@ -1,6 +1,6 @@
 # Dev-Stack Ecosystem
 
-> One-command bootstrap — 9 pluggable modules, 8-stage pipeline, CodeBoarding visualization, and VCS best-practices enforcement for any Python repo.
+> One-command bootstrap — 9 pluggable modules, 9-stage pipeline, CodeBoarding visualization, and VCS best-practices enforcement for any Python repo.
 
 - [What Is Dev-Stack?](#what-is-dev-stack)
 - [Key Capabilities](#key-capabilities)
@@ -23,7 +23,7 @@
 Dev-Stack is a Python 3.11+ CLI that turns any repository into a fully automated, AI-ready workspace. Run a single `dev-stack init` command and get:
 
 - **9 pluggable modules** — Hooks, Spec Kit, MCP Servers, CI Workflows, Docker, Visualization, UV Project, Sphinx Docs, and VCS Hooks install independently or as a curated bundle
-- **8-stage automation pipeline** — lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → commit-message, wired into git pre-commit hooks with hard/soft gating
+- **9-stage automation pipeline** — lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → visualize → commit-message, wired into git pre-commit hooks with hard/soft gating
 - **CodeBoarding visualization** — generates Mermaid architecture diagrams from source analysis and injects them into README files with managed markers
 - **VCS best-practices enforcement** — conventional commit linting, configurable branch naming, SSH commit signing, PR generation, changelog automation, and semantic release
 - **Python project scaffolding** — `uv init --package` bootstrapping with ruff, mypy, pytest, coverage, and Sphinx doc configuration out of the box
@@ -35,7 +35,7 @@ The CLI mirrors the artifacts inside [specs/001-dev-stack-ecosystem](specs/001-d
 ## Key Capabilities
 
 - 🧩 **Module-driven scaffolding** — 9 independently installable modules cover hooks, specs, MCP servers, CI, Docker, visualization, Python project setup, Sphinx docs, and VCS enforcement
-- 🔁 **8-stage automation pipeline** — lint, typecheck, test, security, docs-api, docs-narrative, infra-sync, and commit-message stages with hard/soft gating wired into git hooks
+- 🔁 **9-stage automation pipeline** — lint, typecheck, test, security, docs-api, docs-narrative, infra-sync, visualize, and commit-message stages with hard/soft gating wired into git hooks
 - 📊 **CodeBoarding visualization** — generates Mermaid architecture diagrams from source analysis with `--depth-level`, `--incremental`, and per-folder sub-diagrams
 - 🔒 **VCS best-practices enforcement** — conventional commit linting, configurable branch naming regex, SSH commit signing, automated PR descriptions, changelogs, and semantic releases
 - 🐍 **Python project scaffolding** — `uv init --package` bootstrapping with ruff, mypy, pytest, coverage, and Sphinx pre-configured
@@ -99,11 +99,11 @@ cd /path/to/your-repo
 
 # Greenfield — scaffold a brand-new Python project
 uv init --package   # creates pyproject.toml, src/ layout, tests/
-dev-stack init --json
+dev-stack --json init
 
 # Brownfield — augment an existing repo (safe conflict detection)
-dev-stack init --dry-run --json   # preview what will change
-dev-stack init --json             # apply
+dev-stack --json init --dry-run   # preview what will change
+dev-stack --json init             # apply
 ```
 
 - Set `DEV_STACK_AGENT=<cli>` to override agent auto-detection (`claude` → `gh copilot` → `cursor` → `none`).
@@ -111,23 +111,25 @@ dev-stack init --json             # apply
 
 ### 3. Review the generated assets
 
-| Path | Purpose |
-|------|---------|
-| `dev-stack.toml` | Stack manifest — modules, versions, rollback tag, detected agent |
-| `.pre-commit-config.yaml` | Pre-commit hook config wired to the 8-stage pipeline |
-| `scripts/hooks/pre-commit` | Shell entry point for git pre-commit |
-| `.git/hooks/commit-msg` | Conventional-commit linting via gitlint + custom rules |
-| `.git/hooks/pre-push` | Branch naming + signing enforcement |
-| `.specify/` | GitHub Spec Kit scaffold — constitution, memory, templates, scripts |
-| `.dev-stack/instructions.md` | Agent instructions injected into detected agent config |
-| `constitution-template.md` | Constitutional governance template for agent instructions |
-| `cliff.toml` | git-cliff configuration for changelog generation |
-| `.github/workflows/dev-stack-*.yml` | CI workflows — tests, deploy, vulnerability scan |
-| `.claude/settings.local.json` or `.github/copilot-mcp.json` | MCP server configs for the detected agent |
-| `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Sphinx documentation scaffold (when `sphinx_docs` module is active) |
-| `.codeboarding/` | CodeBoarding analysis output directory |
-| `.dev-stack/` | Internal state — viz manifests, pipeline cache (gitignored) |
-| `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment (when `docker` module is active) |
+| Path | Purpose | Module |
+|------|---------|--------|
+| `dev-stack.toml` | Stack manifest — modules, versions, rollback tag, detected agent | core |
+| `.pre-commit-config.yaml` | Pre-commit hook config wired to the 9-stage pipeline | hooks |
+| `scripts/hooks/pre-commit` | Shell entry point for git pre-commit | hooks |
+| `.git/hooks/commit-msg` | Conventional-commit linting via gitlint + custom rules | vcs_hooks |
+| `.git/hooks/pre-push` | Branch naming + signing enforcement | vcs_hooks |
+| `.specify/` | GitHub Spec Kit scaffold — constitution, memory, templates, scripts | speckit |
+| `.dev-stack/instructions.md` | Agent instructions injected into detected agent config | vcs_hooks |
+| `constitution-template.md` | Constitutional governance template for agent instructions | vcs_hooks |
+| `cliff.toml` | git-cliff configuration for changelog generation | vcs_hooks |
+| `.github/workflows/dev-stack-*.yml` | CI workflows — tests, deploy, vulnerability scan | ci_workflows |
+| `.claude/settings.local.json` or `.github/copilot-mcp.json` | MCP server configs for the detected agent | mcp_servers |
+| `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Sphinx documentation scaffold | sphinx_docs |
+| `.codeboarding/` | CodeBoarding analysis output directory | visualization |
+| `.dev-stack/` | Internal state — `pipeline/` and `viz/` are gitignored; `instructions.md` and `hooks-manifest.json` are tracked | core |
+| `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment | docker |
+
+Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `vcs_hooks`, `speckit`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
 
 Commit the generated files, run `dev-stack pipeline run --force` to prime the hooks, and use the [Validation Checklist](#validation-checklist) for ongoing verification.
 
@@ -139,8 +141,8 @@ Commit the generated files, run `dev-stack pipeline run --force` to prime the ho
 | `dev-stack update [--modules ...]` | Refreshes managed sections or adds modules; detects new defaults and prompts interactively |
 | `dev-stack rollback [--ref TAG]` | Restores files to the last (or specified) rollback tag and cleans up intermediate tags |
 | `dev-stack mcp install\|verify` | Writes MCP server configs for the detected agent and runs health checks |
-| `dev-stack pipeline run [--force]` | Executes the 8-stage pipeline: lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → commit-message |
-| `dev-stack visualize [--incremental] [--depth-level N] [--no-readme] [--timeout S]` | Generates Mermaid architecture diagrams via CodeBoarding and injects them into README files |
+| `dev-stack pipeline run [--force]` | Executes the 9-stage pipeline: lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → visualize → commit-message |
+| `dev-stack visualize [--incremental] [--depth-level N] [--no-readme] [--timeout S]` | Generates Mermaid architecture diagrams via CodeBoarding and injects them into README files (also runs automatically as pipeline stage 8) |
 | `dev-stack status` | Summarizes module health, detected agent, and last pipeline run |
 | `dev-stack changelog [--unreleased\|--full]` | Generates or updates `CHANGELOG.md` from conventional commits via git-cliff |
 | `dev-stack hooks status` | Shows managed hook status with checksum validation and signing configuration |
@@ -148,13 +150,13 @@ Commit the generated files, run `dev-stack pipeline run --force` to prime the ho
 | `dev-stack release [--bump LEVEL] [--no-tag]` | Semantic release — infers bump from conventional commits, updates version + changelog, creates git tag |
 | `dev-stack version` | Prints CLI version and configuration context |
 
-All commands support `--json` for machine-readable output. Mutating commands honor `--dry-run` before making changes.
+All commands support `--json` (placed before the subcommand: `dev-stack --json <command>`) for machine-readable output. Mutating commands honor `--dry-run` before making changes.
 
 ## Module Catalog
 
 | Module | Managed Assets | Highlights |
 |--------|----------------|------------|
-| **Hooks** | `.pre-commit-config.yaml`, `scripts/hooks/pre-commit` | 8-stage automation pipeline wired into git pre-commit hooks |
+| **Hooks** | `.pre-commit-config.yaml`, `scripts/hooks/pre-commit` | 9-stage automation pipeline wired into git pre-commit hooks |
 | **Spec Kit** | `.specify/` scaffold, `.dev-stack/bin/specify` shim | Ships constitution, memory, templates, and scripts; preserves `memory/constitution.md` on update |
 | **MCP Servers** | `.claude/settings.local.json` or `.github/copilot-mcp.json` | Auto-installs Context7, GitHub, Sequential Thinking, Hugging Face, NotebookLM servers for detected agent |
 | **CI Workflows** | `.github/workflows/dev-stack-{tests,deploy,vuln-scan}.yml` | Opinionated multi-job GitHub Actions CI with SHA-256 conflict detection |
@@ -177,12 +179,14 @@ Dependencies are resolved automatically — for example, Sphinx Docs requires UV
 | 5 | docs-api | Hard gate | `sphinx-apidoc` + `sphinx -b html -W --keep-going` |
 | 6 | docs-narrative | Soft gate | Agent-generated narrative docs in `docs/guides/` |
 | 7 | infra-sync | Soft gate | Checksums templates vs installed hooks/config for drift detection |
-| 8 | commit-message | Soft gate | Agent-generated structured commit narrative with conventional format and required trailers (`Spec-Ref`, `Task-Ref`, `Pipeline`, etc.) |
+| 8 | visualize | Soft gate | Runs CodeBoarding analysis and injects Mermaid diagrams into READMEs — skips when CodeBoarding CLI is absent or `[tool.dev-stack.pipeline] visualize = false` |
+| 9 | commit-message | Soft gate | Agent-generated structured commit narrative with conventional format and required trailers (`Spec-Ref`, `Task-Ref`, `Pipeline`, etc.) |
 
 - **Hard gates** (stages 1–5): halt the pipeline on failure — the commit is blocked.
-- **Soft gates** (stages 6–8): warn on failure but allow the commit to proceed; use `--force` to suppress warnings.
+- **Soft gates** (stages 6–9): warn on failure but allow the commit to proceed; use `--force` to suppress warnings.
 - Stages `lint`, `test`, and `security` parallelize via `ProcessPoolExecutor` in repos with >500 files.
-- Agent-dependent stages (6, 8) skip gracefully when no coding agent CLI is detected.
+- Agent-dependent stages (6, 9) skip gracefully when no coding agent CLI is detected.
+- Stage 8 (visualize) skips when CodeBoarding is not installed or visualization is disabled via config.
 
 ## Visualization Workflow
 
@@ -192,13 +196,13 @@ Dependencies are resolved automatically — for example, Sphinx Docs requires UV
 
 ```bash
 # Full regeneration
-dev-stack visualize --json
+dev-stack --json visualize
 
 # Incremental — only re-analyze if source files changed
-dev-stack visualize --incremental --json
+dev-stack --json visualize --incremental
 
 # Generate diagrams without injecting into READMEs
-dev-stack visualize --no-readme --json
+dev-stack --json visualize --no-readme
 ```
 
 The `--incremental` flag compares SHA-256 hashes of source files against `.dev-stack/viz/manifest.json` — unchanged repos are skipped entirely.
@@ -214,7 +218,7 @@ Run these checks after `dev-stack init` or `dev-stack update` to confirm everyth
 5. **Visualization works** — `dev-stack visualize --json` produces `.codeboarding/` output and injects Mermaid diagrams into README.
 6. **Config loads** — `grep 'tool.dev-stack' pyproject.toml` shows hooks, branch, and signing sections.
 7. **Brownfield safe** — `dev-stack init --dry-run --json` in an existing repo lists `conflicts` without modifying files.
-8. **Rollback available** — `git tag -l 'dev-stack-rollback-*'` shows at least one rollback tag.
+8. **Rollback available** — `git tag -l 'dev-stack-rollback-*'` shows at least one rollback tag (requires at least one commit before `dev-stack init`).
 
 ## Configuration
 
@@ -234,6 +238,9 @@ exempt = ["main", "master", "develop", "staging", "production"]
 enabled = false         # Enable SSH commit signing
 enforcement = "warn"    # "warn" (advisory) or "block" (reject unsigned commits)
 key = ""                # Path to SSH public key — auto-detected from ssh-agent when empty
+
+[tool.dev-stack.pipeline]
+visualize = true        # Auto-regenerate CodeBoarding diagrams as pipeline stage 8
 ```
 
 - **Branch naming** — The `pre-push` hook validates the current branch against the configured regex pattern. Branches in the `exempt` list are always allowed.
@@ -248,7 +255,7 @@ dev-stack/
 ├── src/dev_stack/
 │   ├── cli/                  # Click commands (init, update, rollback, mcp, pipeline, …)
 │   ├── modules/              # 9 pluggable modules (hooks, speckit, mcp_servers, …)
-│   ├── pipeline/             # 8-stage orchestrator, agent bridge, commit formatter
+│   ├── pipeline/             # 9-stage orchestrator, agent bridge, commit formatter
 │   ├── brownfield/           # Conflict detection, marker utilities, rollback helpers
 │   ├── vcs/                  # Commit parsing, branch validation, PR/changelog/release, signing, scope
 │   ├── rules/                # Gitlint custom rules — conventional commits + trailers
@@ -277,7 +284,7 @@ dev-stack/
 
 - **`src/dev_stack/cli/`** — Click-based CLI with 12 commands, global `--json`/`--dry-run`/`--verbose` flags, and structured exit codes.
 - **`src/dev_stack/modules/`** — 9 pluggable modules implementing the `ModuleBase` contract (`install`, `verify`, `uninstall`); dependency resolution ensures correct ordering.
-- **`src/dev_stack/pipeline/`** — 8-stage orchestrator with hard/soft gating, `ProcessPoolExecutor` parallelization, `AgentBridge` for coding-agent invocation, and last-run state persistence.
+- **`src/dev_stack/pipeline/`** — 9-stage orchestrator with hard/soft gating, `ProcessPoolExecutor` parallelization, `AgentBridge` for coding-agent invocation, and last-run state persistence.
 - **`src/dev_stack/brownfield/`** — Conflict detection via SHA-256 checksums, marker-delimited managed sections, interactive resolution prompts, and git tag–based rollback.
 - **`src/dev_stack/vcs/`** — Commit parsing (`git log` → typed `CommitSummary`), branch validation against configurable regex, PR description generation with AI/human stats, changelog via git-cliff, semantic release with version bumping, SSH signing configuration, and scope advisory analysis.
 - **`src/dev_stack/rules/`** — Custom gitlint rules: `ConventionalCommitRule` (validates `type(scope): description`), `TrailerPresenceRule` + `TrailerPathRule` (enforce required trailers on agent commits), and `PipelineFailureWarningRule` (non-blocking warnings for failed stages).

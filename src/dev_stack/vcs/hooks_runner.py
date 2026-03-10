@@ -5,6 +5,7 @@ Provides:
 - ``run_pre_push_hook(stdin)`` — validates branch names + signing
 - ``run_pre_commit_hook()`` — runs lint + typecheck pipeline stages
 """
+
 from __future__ import annotations
 
 import sys
@@ -64,6 +65,7 @@ def run_commit_msg_hook(msg_file_path: str) -> int:
         # Build config programmatically — ignores any global .gitlint file
         config = LintConfig()
         config.set_general_option("ignore", "body-is-missing")
+        config.set_rule_option("body-max-line-length", "line-length", 120)
         config.extra_path = rules_path
 
         linter = GitLinter(config)
@@ -182,7 +184,9 @@ def run_pre_push_hook(stdin: IO[str]) -> int:
                 remote_sha = parts[3]
 
                 unsigned = get_unsigned_agent_commits(
-                    local_sha, remote_sha, repo_root=repo_root,
+                    local_sha,
+                    remote_sha,
+                    repo_root=repo_root,
                 )
                 if unsigned:
                     msg_lines = [
@@ -219,7 +223,9 @@ def run_pre_commit_hook() -> int:
 
         repo_root = _get_repo_root()
         if repo_root is None:
-            print("Warning: could not detect repo root, skipping pre-commit checks", file=sys.stderr)
+            print(
+                "Warning: could not detect repo root, skipping pre-commit checks", file=sys.stderr
+            )
             return 0
 
         from dev_stack.pipeline.stages import (

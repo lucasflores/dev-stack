@@ -1,4 +1,5 @@
 """Tests for individual pipeline stages."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,9 +58,15 @@ def test_execute_commit_stage_writes_commit_message(monkeypatch, repo_root: Path
         ],
     )
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "diff --git")
-    monkeypatch.setattr("dev_stack.pipeline.stages._list_staged_files", lambda _path: ["src/app.py"])
-    monkeypatch.setattr("dev_stack.pipeline.stages._detect_spec_ref", lambda _path: "specs/feature/spec.md")
-    monkeypatch.setattr("dev_stack.pipeline.stages._detect_task_ref", lambda _path: "specs/feature/tasks.md")
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._list_staged_files", lambda _path: ["src/app.py"]
+    )
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._detect_spec_ref", lambda _path: "specs/feature/spec.md"
+    )
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._detect_task_ref", lambda _path: "specs/feature/tasks.md"
+    )
 
     result = _execute_commit_stage(context)
 
@@ -90,8 +97,12 @@ def test_execute_docs_narrative_stage_updates_guides(monkeypatch, repo_root: Pat
     assert "Documented changes" in guides_index.read_text(encoding="utf-8")
 
 
-def test_execute_docs_narrative_stage_skips_when_template_missing(monkeypatch, repo_root: Path) -> None:
-    response = AgentResponse(success=True, content="irrelevant", json_data=None, agent_cli="claude", duration_ms=1)
+def test_execute_docs_narrative_stage_skips_when_template_missing(
+    monkeypatch, repo_root: Path
+) -> None:
+    response = AgentResponse(
+        success=True, content="irrelevant", json_data=None, agent_cli="claude", duration_ms=1
+    )
     context = StageContext(repo_root=repo_root, agent_bridge=_FakeAgent(response))
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "diff --git")
     missing_template = repo_root / "missing.txt"
@@ -104,10 +115,14 @@ def test_execute_docs_narrative_stage_skips_when_template_missing(monkeypatch, r
 
 
 def test_execute_commit_stage_skips_without_diff(monkeypatch, repo_root: Path) -> None:
-    response = AgentResponse(success=True, content="body", json_data=None, agent_cli="claude", duration_ms=1)
+    response = AgentResponse(
+        success=True, content="body", json_data=None, agent_cli="claude", duration_ms=1
+    )
     context = StageContext(repo_root=repo_root, agent_bridge=_FakeAgent(response))
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "")
-    monkeypatch.setattr("dev_stack.pipeline.stages._list_staged_files", lambda _path: ["src/app.py"])
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._list_staged_files", lambda _path: ["src/app.py"]
+    )
 
     result = _execute_commit_stage(context)
 
@@ -116,7 +131,9 @@ def test_execute_commit_stage_skips_without_diff(monkeypatch, repo_root: Path) -
 
 
 def test_execute_commit_stage_skips_without_files(monkeypatch, repo_root: Path) -> None:
-    response = AgentResponse(success=True, content="body", json_data=None, agent_cli="claude", duration_ms=1)
+    response = AgentResponse(
+        success=True, content="body", json_data=None, agent_cli="claude", duration_ms=1
+    )
     context = StageContext(repo_root=repo_root, agent_bridge=_FakeAgent(response))
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "diff")
     monkeypatch.setattr("dev_stack.pipeline.stages._list_staged_files", lambda _path: [])
@@ -128,12 +145,20 @@ def test_execute_commit_stage_skips_without_files(monkeypatch, repo_root: Path) 
 
 
 def test_execute_commit_stage_warns_on_agent_failure(monkeypatch, repo_root: Path) -> None:
-    response = AgentResponse(success=False, content="", json_data=None, agent_cli="claude", duration_ms=1, error="boom")
+    response = AgentResponse(
+        success=False, content="", json_data=None, agent_cli="claude", duration_ms=1, error="boom"
+    )
     context = StageContext(repo_root=repo_root, agent_bridge=_FakeAgent(response))
     monkeypatch.setattr("dev_stack.pipeline.stages._read_git_diff", lambda _path: "diff")
-    monkeypatch.setattr("dev_stack.pipeline.stages._list_staged_files", lambda _path: ["src/app.py"])
-    monkeypatch.setattr("dev_stack.pipeline.stages._detect_spec_ref", lambda _path: "specs/path/spec.md")
-    monkeypatch.setattr("dev_stack.pipeline.stages._detect_task_ref", lambda _path: "specs/path/tasks.md")
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._list_staged_files", lambda _path: ["src/app.py"]
+    )
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._detect_spec_ref", lambda _path: "specs/path/spec.md"
+    )
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._detect_task_ref", lambda _path: "specs/path/tasks.md"
+    )
 
     result = _execute_commit_stage(context)
 
@@ -155,9 +180,9 @@ def test_execute_infra_sync_stage_detects_drift(repo_root: Path) -> None:
     assert "scripts/hooks/pre-commit" in result.output
 
 
-def test_build_pipeline_stages_returns_eight_stages() -> None:
+def test_build_pipeline_stages_returns_nine_stages() -> None:
     stages = build_pipeline_stages()
-    assert len(stages) == 8
+    assert len(stages) == 9
 
     expected = [
         (1, "lint", FailureMode.HARD, False),
@@ -167,7 +192,8 @@ def test_build_pipeline_stages_returns_eight_stages() -> None:
         (5, "docs-api", FailureMode.HARD, False),
         (6, "docs-narrative", FailureMode.SOFT, True),
         (7, "infra-sync", FailureMode.SOFT, False),
-        (8, "commit-message", FailureMode.SOFT, True),
+        (8, "visualize", FailureMode.SOFT, False),
+        (9, "commit-message", FailureMode.SOFT, True),
     ]
     for stage, (order, name, mode, agent) in zip(stages, expected):
         assert stage.order == order

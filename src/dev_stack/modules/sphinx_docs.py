@@ -1,11 +1,11 @@
 """Sphinx Docs module — Sphinx documentation scaffolding."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Sequence
 
 from .base import ModuleBase, ModuleResult, ModuleStatus
-
 
 # ---------------------------------------------------------------------------
 # Template renderers (T020)
@@ -16,6 +16,7 @@ def _render_conf_py(pkg_name: str) -> str:
     """Generate ``docs/conf.py`` content with ``sys.path.insert`` for src/ layout."""
     return f'''\
 """Sphinx configuration for {pkg_name}."""
+
 import os
 import sys
 

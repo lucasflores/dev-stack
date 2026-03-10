@@ -1,4 +1,5 @@
 """Implementation of the `dev-stack init` command."""
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,6 @@ from .main import CLIContext, ExitCode, cli
 @cli.command("init")
 @click.option("--modules", "modules_csv", help="Comma-separated list of modules to install")
 @click.option("--force", is_flag=True, help="Overwrite existing files managed by dev-stack")
-
 @click.pass_obj
 def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     """Initialize a repository with dev-stack automation."""
@@ -52,7 +52,9 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
         try:
             existing_manifest = read_manifest(manifest_path)
         except ManifestError as exc:
-            emit_manifest_error(ctx, f"Unable to read existing manifest: {exc}", exit_code=ExitCode.GENERAL_ERROR)
+            emit_manifest_error(
+                ctx, f"Unable to read existing manifest: {exc}", exit_code=ExitCode.GENERAL_ERROR
+            )
             return
     if already_initialized and not force:
         _report_already_initialized(ctx)
@@ -92,6 +94,12 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     merge_map: dict[Path, str] = {}
     conflicts_payload = serialize_conflicts(conflict_report, repo_root)
 
+    if existing_conflicts and force:
+        for conflict in conflict_report.conflicts:
+            if conflict.resolution == "pending":
+                conflict.resolution = "overwritten"
+        conflicts_payload = serialize_conflicts(conflict_report, repo_root)
+
     if existing_conflicts and not force:
         if ctx.json_output:
             payload = {
@@ -104,7 +112,9 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
             click.echo(json.dumps(payload))
             raise SystemExit(ExitCode.CONFLICT)
         echo_conflict_summary(conflict_report, repo_root)
-        skip_map, merge_map = resolve_conflicts_interactively(conflict_report, repo_root, preview_lookup)
+        skip_map, merge_map = resolve_conflicts_interactively(
+            conflict_report, repo_root, preview_lookup
+        )
         conflicts_payload = serialize_conflicts(conflict_report, repo_root)
 
     rollback_ref = manifest.rollback_ref
@@ -127,6 +137,8 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
         agent=agent_info,
         conflicts=conflicts_payload,
     )
+
+
 def _install_modules(modules: Sequence[ModuleBase], force: bool) -> None:
     for module in modules:
         module.install(force=force)
@@ -208,14 +220,9 @@ def _emit_dry_run_summary(
 
 
 def _report_already_initialized(ctx: CLIContext) -> None:
-    message = (
-        "Repository already has dev-stack.toml. Use --force to reinitialize or run 'dev-stack update'."
-    )
+    message = "Repository already has dev-stack.toml. Use --force to reinitialize or run 'dev-stack update'."
     if ctx.json_output:
         payload = {"status": "error", "message": message}
         click.echo(json.dumps(payload))
     else:
         click.echo(message, err=True)
-
-
-

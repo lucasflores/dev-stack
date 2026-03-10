@@ -3,6 +3,7 @@
 TrailerPresenceRule (UC2) — requires all five trailers on agent-generated commits.
 TrailerPathRule (UC3) — validates that Spec-Ref/Task-Ref trailer paths exist.
 """
+
 from __future__ import annotations
 
 import os
@@ -99,6 +100,7 @@ class TrailerPathRule(CommitRule):
     id = "UC3"
 
     PATH_TRAILERS: tuple[str, ...] = ("Spec-Ref", "Task-Ref")
+    SENTINEL_VALUES: frozenset[str] = frozenset({"none", "n/a", "initial", "-"})
 
     def validate(self, commit):  # type: ignore[override]
         body_lines = commit.message.body if commit.message.body else []
@@ -112,6 +114,8 @@ class TrailerPathRule(CommitRule):
         for trailer_name in self.PATH_TRAILERS:
             if trailer_name in trailers:
                 ref_path = trailers[trailer_name]
+                if ref_path.strip().lower() in self.SENTINEL_VALUES:
+                    continue
                 full_path = repo_root / ref_path
                 if not full_path.exists():
                     violations.append(

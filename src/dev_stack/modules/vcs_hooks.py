@@ -1,21 +1,23 @@
 """VcsHooksModule — git hook lifecycle management for dev-stack."""
+
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
-import stat
+import tomllib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+import tomli_w
+
 from ..brownfield import markers
-from ..errors import ConflictError, DevStackError
 from ..brownfield.conflict import ConflictType, FileConflict
+from ..errors import ConflictError, DevStackError
 from ..modules.base import ModuleBase, ModuleResult, ModuleStatus
-from ..vcs import VcsConfig, load_vcs_config
+from ..vcs import load_vcs_config
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = PACKAGE_ROOT / "templates"
@@ -25,6 +27,7 @@ HOOK_TEMPLATE_DIR = TEMPLATE_DIR / "hooks"
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class HookEntry:
@@ -75,6 +78,48 @@ class HookManifest:
 # ---------------------------------------------------------------------------
 # Module
 # ---------------------------------------------------------------------------
+
+
+_DEFAULT_DS_CONFIG: dict[str, Any] = {
+    "hooks": {
+        "commit-msg": True,
+        "pre-push": True,
+        "pre-commit": True,
+    },
+    "branch": {
+        "pattern": "^(main|master|develop|feature/.+|bugfix/.+|hotfix/.+|release/.+)$",
+        "exempt": ["main", "master"],
+    },
+    "signing": {
+        "required": False,
+    },
+    "pipeline": {
+        "visualize": True,
+    },
+}
+
+
+def _ensure_devstack_config(pyproject_path: Path) -> bool:
+    """Write default ``[tool.dev-stack.*]`` sections if missing. Returns True if modified."""
+    if not pyproject_path.exists():
+        return False
+    with open(pyproject_path, "rb") as fh:
+        data = tomllib.load(fh)
+
+    tool = data.setdefault("tool", {})
+    ds = tool.setdefault("dev-stack", {})
+
+    modified = False
+    for section, defaults in _DEFAULT_DS_CONFIG.items():
+        if section not in ds:
+            ds[section] = defaults
+            modified = True
+
+    if modified:
+        with open(pyproject_path, "wb") as fh:
+            tomli_w.dump(data, fh)
+    return modified
+
 
 class VcsHooksModule(ModuleBase):
     """Manages git hooks, constitutional practices, and signing config."""
@@ -141,6 +186,12 @@ class VcsHooksModule(ModuleBase):
 
         # Generate constitutional templates & agent instructions (US4)
         self._generate_constitutional_files(created, modified, warnings)
+
+        # Write default [tool.dev-stack.*] sections to pyproject.toml
+        pyproject = self.repo_root / "pyproject.toml"
+        if _ensure_devstack_config(pyproject):
+            if pyproject not in modified:
+                modified.append(pyproject)
 
         # Configure SSH signing if enabled (US8)
         self._configure_signing(warnings)
@@ -241,9 +292,7 @@ class VcsHooksModule(ModuleBase):
                     )
                     modified.append(hook_path)
             else:
-                warnings.append(
-                    f"Hook '{hook_name}' was manually modified — skipping update"
-                )
+                warnings.append(f"Hook '{hook_name}' was manually modified — skipping update")
 
         manifest.updated = datetime.now(timezone.utc).isoformat()
         self._save_manifest(manifest, [], modified)
@@ -339,9 +388,7 @@ class VcsHooksModule(ModuleBase):
                 # Overwrite managed hooks
                 pass
             elif force:
-                warnings.append(
-                    f"Overwriting unmanaged hook '{hook_name}' (--force)"
-                )
+                warnings.append(f"Overwriting unmanaged hook '{hook_name}' (--force)")
             else:
                 raise ConflictError(
                     [
@@ -468,9 +515,7 @@ class VcsHooksModule(ModuleBase):
                     if changed:
                         modified.append(agent_file)
                 except Exception as exc:
-                    warnings.append(
-                        f"Could not inject instructions into {agent_file.name}: {exc}"
-                    )
+                    warnings.append(f"Could not inject instructions into {agent_file.name}: {exc}")
 
         # FR-032: Generate cliff.toml from template
         cliff_template = TEMPLATE_DIR / "cliff.toml"

@@ -1,4 +1,5 @@
 """UV Project module — Python project scaffolding via uv."""
+
 from __future__ import annotations
 
 import re
@@ -6,14 +7,11 @@ import shutil
 import subprocess
 import tomllib
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
 import tomli_w
 
-from ..brownfield.conflict import ConflictType, FileConflict
-from ..errors import ConflictError
 from .base import ModuleBase, ModuleResult, ModuleStatus
-
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -205,6 +203,43 @@ def _run_uv_lock(repo_root: Path) -> tuple[bool, str]:
     return completed.returncode == 0, output
 
 
+_STANDARD_GITIGNORE_ENTRIES = [
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".pytest_cache/",
+    ".venv/",
+    ".dev-stack/pipeline/",
+    ".dev-stack/viz/",
+    "dist/",
+    "*.egg-info/",
+]
+
+
+def _ensure_standard_gitignore(repo_root: Path) -> bool:
+    """Append standard Python ignores to ``.gitignore`` if missing.
+
+    Returns True if the file was modified.
+    """
+    gitignore = repo_root / ".gitignore"
+    if gitignore.exists():
+        content = gitignore.read_text(encoding="utf-8")
+    else:
+        content = ""
+
+    missing = [entry for entry in _STANDARD_GITIGNORE_ENTRIES if entry not in content]
+    if not missing:
+        return False
+
+    if content and not content.endswith("\n"):
+        content += "\n"
+    content += "\n".join(missing) + "\n"
+    gitignore.write_text(content, encoding="utf-8")
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Module class
 # ---------------------------------------------------------------------------
@@ -296,6 +331,12 @@ class UvProjectModule(ModuleBase):
                 created.append(lock_path)
         else:
             warnings.append(f"uv lock failed: {lock_output}")
+
+        # --- Step 5: augment .gitignore with standard Python entries ---
+        if _ensure_standard_gitignore(self.repo_root):
+            gitignore_path = self.repo_root / ".gitignore"
+            if gitignore_path not in created:
+                created.append(gitignore_path)
 
         return ModuleResult(
             success=True,

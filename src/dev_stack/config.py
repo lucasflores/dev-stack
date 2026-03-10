@@ -43,6 +43,8 @@ def detect_agent(manifest: StackManifest | None = None) -> AgentInfo:
     explicit = os.getenv("DEV_STACK_AGENT")
     if explicit:
         cli = explicit.lower()
+        if cli == "none":
+            return AgentInfo(cli="none", path=None)
         resolved = _resolve_cli(cli)
         if resolved:
             return resolved

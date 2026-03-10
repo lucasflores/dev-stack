@@ -70,7 +70,11 @@ def apply_post_install_overrides(
 
 
 def has_existing_conflicts(report: ConflictReport) -> bool:
-    return any(conflict.current_hash for conflict in report.conflicts)
+    return any(
+        conflict.current_hash
+        for conflict in report.conflicts
+        if conflict.resolution == "pending"
+    )
 
 
 def emit_manifest_error(ctx, message: str, *, exit_code: int) -> None:

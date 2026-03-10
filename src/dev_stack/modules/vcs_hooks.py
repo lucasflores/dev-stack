@@ -132,7 +132,7 @@ class VcsHooksModule(ModuleBase):
         ".git/hooks/pre-push",
         ".dev-stack/hooks-manifest.json",
         ".dev-stack/instructions.md",
-        "constitution-template.md",
+        ".specify/templates/constitution-template.md",
         "cliff.toml",
     )
 
@@ -338,9 +338,11 @@ class VcsHooksModule(ModuleBase):
                 )
 
         # Check support files
-        constitution = self.repo_root / "constitution-template.md"
-        if not constitution.exists():
-            issues.append("constitution-template.md missing")
+        speckit_templates_dir = self.repo_root / ".specify" / "templates"
+        if speckit_templates_dir.is_dir():
+            constitution = speckit_templates_dir / "constitution-template.md"
+            if not constitution.exists():
+                issues.append(".specify/templates/constitution-template.md missing")
 
         instructions = self.repo_root / ".dev-stack" / "instructions.md"
         if not instructions.exists():
@@ -476,21 +478,42 @@ class VcsHooksModule(ModuleBase):
         modified: list[Path],
         warnings: list[str],
     ) -> None:
-        """Generate constitution-template.md, instructions.md, and inject into agent files.
+        """Generate constitution content, instructions.md, and inject into agent files.
 
-        Implements FR-017, FR-018, FR-019 (US4).
+        Implements FR-017, FR-018, FR-019 (US4) and FR-009, FR-010, FR-011 (US5).
         """
-        # FR-017: Generate constitution-template.md at repo root
+        # FR-009/FR-010: Inject baseline practices into speckit template
         constitution_template = TEMPLATE_DIR / "constitution-template.md"
-        constitution_dest = self.repo_root / "constitution-template.md"
-        if constitution_template.exists():
+        speckit_templates_dir = self.repo_root / ".specify" / "templates"
+        constitution_dest = speckit_templates_dir / "constitution-template.md"
+        root_constitution = self.repo_root / "constitution-template.md"
+
+        if constitution_template.exists() and speckit_templates_dir.is_dir():
             content = constitution_template.read_text(encoding="utf-8")
+
+            # FR-011: Reinit migration — move root constitution to speckit template
+            if root_constitution.exists():
+                root_text = root_constitution.read_text(encoding="utf-8")
+                if root_text.lstrip().startswith("# Dev-Stack Baseline Practices"):
+                    user_content = ""
+                    marker = "## User-Defined Requirements"
+                    marker_idx = root_text.find(marker)
+                    if marker_idx != -1:
+                        after_marker = root_text[marker_idx + len(marker):]
+                        user_content = after_marker.strip()
+                    if user_content:
+                        content = content.rstrip() + "\n\n" + user_content + "\n"
+                    root_constitution.unlink()
+
             existed = constitution_dest.exists()
-            constitution_dest.write_text(content, encoding="utf-8")
-            if existed:
-                modified.append(constitution_dest)
-            else:
-                created.append(constitution_dest)
+            changed = markers.write_managed_section(
+                constitution_dest, "DEV-STACK:CONSTITUTION", content
+            )
+            if changed:
+                if existed:
+                    modified.append(constitution_dest)
+                else:
+                    created.append(constitution_dest)
 
         # FR-018: Generate .dev-stack/instructions.md
         instructions_template = TEMPLATE_DIR / "instructions.md"

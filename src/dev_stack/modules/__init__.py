@@ -12,7 +12,7 @@ from .base import ModuleBase
 ModuleClass = Type[ModuleBase]
 
 _MODULE_REGISTRY: Dict[str, ModuleClass] = {}
-DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "vcs_hooks", "speckit")
+DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "speckit", "vcs_hooks")
 
 
 def register_module(cls: ModuleClass) -> ModuleClass:

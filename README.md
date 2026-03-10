@@ -100,13 +100,15 @@ cd /path/to/your-repo
 # Greenfield — scaffold a brand-new Python project
 uv init --package   # creates pyproject.toml, src/ layout, tests/
 dev-stack --json init
+git add -A && git commit -m "chore: initial dev-stack setup"
 
 # Brownfield — augment an existing repo (safe conflict detection)
 dev-stack --json init --dry-run   # preview what will change
 dev-stack --json init             # apply
 ```
 
-- Set `DEV_STACK_AGENT=<cli>` to override agent auto-detection (`claude` → `gh copilot` → `cursor` → `none`).
+- The first commit after `dev-stack init` passes all pre-commit hooks automatically — no `--no-verify` needed.
+- Set `DEV_STACK_AGENT=none` to skip agent detection entirely, or `DEV_STACK_AGENT=<cli>` to override auto-detection (`claude` → `gh copilot` → `cursor`).
 - Pass `--modules hooks,visualization` (or any subset) to control which modules are installed.
 
 ### 3. Review the generated assets
@@ -120,7 +122,7 @@ dev-stack --json init             # apply
 | `.git/hooks/pre-push` | Branch naming + signing enforcement | vcs_hooks |
 | `.specify/` | GitHub Spec Kit scaffold — constitution, memory, templates, scripts | speckit |
 | `.dev-stack/instructions.md` | Agent instructions injected into detected agent config | vcs_hooks |
-| `constitution-template.md` | Constitutional governance template for agent instructions | vcs_hooks |
+| `.specify/templates/constitution-template.md` | Baseline practices injected into speckit constitution template | vcs_hooks |
 | `cliff.toml` | git-cliff configuration for changelog generation | vcs_hooks |
 | `.github/workflows/dev-stack-*.yml` | CI workflows — tests, deploy, vulnerability scan | ci_workflows |
 | `.claude/settings.local.json` or `.github/copilot-mcp.json` | MCP server configs for the detected agent | mcp_servers |
@@ -129,9 +131,9 @@ dev-stack --json init             # apply
 | `.dev-stack/` | Internal state — `pipeline/` and `viz/` are gitignored; `instructions.md` and `hooks-manifest.json` are tracked | core |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment | docker |
 
-Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `vcs_hooks`, `speckit`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
+Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `speckit`, `vcs_hooks`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
 
-Commit the generated files, run `dev-stack pipeline run --force` to prime the hooks, and use the [Validation Checklist](#validation-checklist) for ongoing verification.
+After init, commit the generated files with `git add -A && git commit -m "chore: initial dev-stack setup"`. The pre-commit hooks will pass cleanly. Use the [Validation Checklist](#validation-checklist) for ongoing verification.
 
 ## CLI Essentials
 
@@ -164,9 +166,9 @@ All commands support `--json` (placed before the subcommand: `dev-stack --json <
 | **Visualization** | `.codeboarding/`, `.dev-stack/viz/` | CodeBoarding CLI → Mermaid diagram generation + managed-marker README injection; cleans up legacy `docs/diagrams/` |
 | **UV Project** | `pyproject.toml`, `.python-version`, `.gitignore`, `tests/` scaffold | `uv init --package` bootstrapping with ruff, mypy, pytest, coverage, and optional-dependencies (`docs`, `dev`) pre-configured |
 | **Sphinx Docs** | `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Auto-detects package name; generates docs with `-W --keep-going` flags; appends `docs/_build/` to `.gitignore` |
-| **VCS Hooks** | `.git/hooks/commit-msg`, `.git/hooks/pre-push`, `constitution-template.md`, `.dev-stack/instructions.md`, `cliff.toml` | Conventional commit linting (gitlint + custom rules), branch naming enforcement, SSH signing configuration, constitutional agent instructions, checksum-tracked hook manifests |
+| **VCS Hooks** | `.git/hooks/commit-msg`, `.git/hooks/pre-push`, `.specify/templates/constitution-template.md`, `.dev-stack/instructions.md`, `cliff.toml` | Conventional commit linting (gitlint + custom rules), branch naming enforcement, SSH signing configuration, constitutional agent instructions, checksum-tracked hook manifests |
 
-Dependencies are resolved automatically — for example, Sphinx Docs requires UV Project. Default greenfield install order: `uv_project` → `sphinx_docs` → `hooks` → `vcs_hooks` → `speckit`.
+Dependencies are resolved automatically — for example, Sphinx Docs requires UV Project. Default greenfield install order: `uv_project` → `sphinx_docs` → `hooks` → `speckit` → `vcs_hooks`.
 
 ## Automation Pipeline
 
@@ -310,6 +312,16 @@ dev-stack --json visualize
 ```
 
 Before merging, rerun the [Validation Checklist](#validation-checklist) to keep hooks, pipeline, and visualization in sync.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `detect-secrets` reports findings in `.dev-stack/` files | Baseline generated without `--exclude-files` (pre-007 installs) | Delete `.secrets.baseline` and re-run `dev-stack init` to regenerate with exclusions |
+| `dev-stack init` requires `--force` after `uv init --package` | Predecessor files detected as conflicts (pre-007 behavior) | Update dev-stack and re-run `dev-stack init` — predecessor files are now auto-resolved |
+| `DEV_STACK_AGENT=none` still detects an agent | Agent override bug (pre-007) | Update dev-stack — `none` is now recognized as a sentinel value |
+| `constitution-template.md` at repo root instead of `.specify/templates/` | Old install placement (pre-007) | Re-run `dev-stack init` — the file will be migrated automatically |
+| Pre-commit hooks fail on the very first commit | Rare edge case with external baseline tools | Use `git commit --no-verify -m "chore: initial setup"` as a one-time fallback, then fix the underlying issue |
 
 ## Spec Assets
 

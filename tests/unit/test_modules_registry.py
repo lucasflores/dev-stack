@@ -80,7 +80,7 @@ def test_cyclical_dependency_detection(registry) -> None:
 
 
 def test_default_greenfield_modules_include_new_modules() -> None:
-    assert modules.DEFAULT_GREENFIELD_MODULES == ("uv_project", "sphinx_docs", "hooks", "vcs_hooks", "speckit")
+    assert modules.DEFAULT_GREENFIELD_MODULES == ("uv_project", "sphinx_docs", "hooks", "speckit", "vcs_hooks")
 
 
 def test_resolve_default_modules_respect_dependency_order() -> None:

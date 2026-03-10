@@ -279,7 +279,7 @@ def _execute_security_stage(context: StageContext) -> StageResult:
             output="\n\n".join(outputs),
         )
 
-    scan_cmd = ("detect-secrets", "scan", "--baseline", str(baseline_path))
+    scan_cmd = ("detect-secrets", "scan", "--baseline", str(baseline_path), "--exclude-files", r"\.dev-stack/|\.secrets\.baseline")
     _run_command(scan_cmd, context.repo_root)
     outputs.append(f"$ {' '.join(scan_cmd)}\nbaseline updated")
 

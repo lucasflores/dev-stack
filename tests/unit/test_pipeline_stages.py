@@ -15,6 +15,10 @@ from dev_stack.pipeline.stages import (
     _execute_commit_stage,
     _execute_docs_narrative_stage,
     _execute_infra_sync_stage,
+    _execute_lint_stage,
+    _execute_test_stage,
+    _execute_typecheck_stage,
+    _execute_docs_api_stage,
     build_pipeline_stages,
 )
 
@@ -200,3 +204,36 @@ def test_build_pipeline_stages_returns_nine_stages() -> None:
         assert stage.name == name
         assert stage.failure_mode == mode
         assert stage.requires_agent == agent
+
+
+# ---------------------------------------------------------------------------
+# T006 / FR-004: Remediation hints in skip messages
+# ---------------------------------------------------------------------------
+
+REMEDIATION_SUFFIX = "run 'uv sync --extra dev --extra docs' to install"
+
+
+class TestRemediationHints:
+    def test_lint_skip_includes_remediation_hint(self, repo_root: Path) -> None:
+        context = StageContext(repo_root=repo_root)
+        result = _execute_lint_stage(context)
+        assert result.status == StageStatus.SKIP
+        assert REMEDIATION_SUFFIX in result.skipped_reason
+
+    def test_test_skip_includes_remediation_hint(self, repo_root: Path) -> None:
+        context = StageContext(repo_root=repo_root)
+        result = _execute_test_stage(context)
+        assert result.status == StageStatus.SKIP
+        assert REMEDIATION_SUFFIX in result.skipped_reason
+
+    def test_typecheck_skip_includes_remediation_hint(self, repo_root: Path) -> None:
+        context = StageContext(repo_root=repo_root)
+        result = _execute_typecheck_stage(context)
+        assert result.status == StageStatus.SKIP
+        assert REMEDIATION_SUFFIX in result.skipped_reason
+
+    def test_docs_api_skip_includes_remediation_hint(self, repo_root: Path) -> None:
+        context = StageContext(repo_root=repo_root)
+        result = _execute_docs_api_stage(context)
+        assert result.status == StageStatus.SKIP
+        assert REMEDIATION_SUFFIX in result.skipped_reason

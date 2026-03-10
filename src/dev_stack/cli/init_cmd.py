@@ -86,7 +86,8 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     conflict_report = build_conflict_report("init", repo_root, detection_map)
 
     # FR-004/FR-005: Mark uv init --package files as greenfield predecessors
-    if is_greenfield_uv_package(repo_root / "pyproject.toml"):
+    is_greenfield = is_greenfield_uv_package(repo_root / "pyproject.toml")
+    if is_greenfield:
         src_dir = repo_root / "src"
         pkg_names = sorted(
             d.name for d in src_dir.iterdir()
@@ -143,10 +144,20 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
         _ensure_initial_commit(repo_root)
         rollback_ref = create_rollback_tag(repo_root)
     if not ctx.dry_run:
-        effective_force = force or existing_conflicts
+        effective_force = force or existing_conflicts or is_greenfield
         _install_modules(module_instances, force=effective_force)
         apply_post_install_overrides(skip_map, merge_map)
-        subprocess.run(["uv", "sync", "--all-extras"], cwd=str(repo_root), check=True)
+        try:
+            subprocess.run(["uv", "sync", "--all-extras"], cwd=str(repo_root), check=True)
+        except subprocess.CalledProcessError as exc:
+            msg = (
+                f"uv sync --all-extras failed (exit code {exc.returncode}). "
+                "Retry with: uv sync --extra dev --extra docs"
+            )
+            if ctx.json_output:
+                click.echo(json.dumps({"warning": msg}), err=True)
+            else:
+                click.echo(f"Warning: {msg}", err=True)
         _generate_secrets_baseline(repo_root)
         if should_write_manifest:
             manifest.rollback_ref = rollback_ref

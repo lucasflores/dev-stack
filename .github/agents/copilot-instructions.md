@@ -14,6 +14,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-10
 - `dev-stack.toml` (TOML manifest), `.secrets.baseline` (JSON), `.dev-stack/pipeline/last-run.json` (006-init-pipeline-bugfixes)
 - Python 3.11+ + click ≥8.1, detect-secrets ≥1.5, tomli-w ≥1.0, rich ≥13.7, pathspec ≥0.12, gitlint-core ≥0.19 (007-init-onboarding-fixes)
 - Filesystem — `.secrets.baseline` (JSON), `dev-stack.toml` (TOML), `.dev-stack/hooks-manifest.json` (JSON) (007-init-onboarding-fixes)
+- Python 3.11+ + click (CLI framework), tomli_w/tomllib (TOML read/write), uv (package manager) (008-greenfield-init-fixes)
+- Filesystem — `dev-stack.toml` manifest, `pyproject.toml`, `.venv/` (008-greenfield-init-fixes)
 
 - Python 3.11+ + `click` (CLI framework), `tomli`/`tomli-w` (TOML read/write), `rich` (terminal output), `d2` CLI (diagrams) (001-dev-stack-ecosystem)
 
@@ -33,9 +35,9 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
+- 008-greenfield-init-fixes: Added Python 3.11+ + click (CLI framework), tomli_w/tomllib (TOML read/write), uv (package manager)
 - 007-init-onboarding-fixes: Added Python 3.11+ + click ≥8.1, detect-secrets ≥1.5, tomli-w ≥1.0, rich ≥13.7, pathspec ≥0.12, gitlint-core ≥0.19
 - 006-init-pipeline-bugfixes: Added Python 3.11+ + click (CLI), tomllib (pyproject parsing), subprocess (stage execution), uv (package management)
-- 004-vcs-best-practices: Added Python 3.11+ + click (CLI), gitlint-core (commit linting), rich (output formatting), tomli-w (TOML writing), pathspec (file matching). Optional: git-cliff (changelog), python-semantic-release (release), gh/glab (PR creation).
 
 
 <!-- MANUAL ADDITIONS START -->

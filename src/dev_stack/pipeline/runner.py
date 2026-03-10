@@ -5,7 +5,7 @@ import json
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
@@ -36,6 +36,7 @@ class PipelineRunResult:
     aborted_stage: str | None = None
     skip_flag_detected: bool = False
     parallelized: bool = False
+    warnings: list[str] = field(default_factory=list)
 
 
 class PipelineRunner:
@@ -121,12 +122,23 @@ class PipelineRunner:
         if success and self._skip_flag_path.exists():
             self._skip_flag_path.unlink()
 
+        # Hollow-pipeline detection: warn if all core stages were skipped
+        warnings: list[str] = []
+        core_stages = {"lint", "typecheck", "test"}
+        core_results = [r for r in results if r.stage_name in core_stages]
+        if core_results and all(r.status == StageStatus.SKIP for r in core_results):
+            warnings.append(
+                "\u26a0 No substantive validation: lint, typecheck, test all skipped "
+                "due to missing tools. Run 'uv sync --extra dev' to install."
+            )
+
         summary = PipelineRunResult(
             results=results,
             success=success,
             aborted_stage=aborted_stage,
             skip_flag_detected=skip_flag_detected,
             parallelized=bool(processed_parallel),
+            warnings=warnings,
         )
         self._record_pipeline_run(summary)
         return summary

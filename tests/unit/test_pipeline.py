@@ -238,3 +238,65 @@ def test_runner_persists_state_file(tmp_path: Path) -> None:
 class _AlwaysUnavailableAgent:
     def is_available(self) -> bool:
         return False
+
+
+# ---------------------------------------------------------------------------
+# T007/T008: PipelineRunResult.warnings and hollow-pipeline detection
+# ---------------------------------------------------------------------------
+
+
+def test_runner_warnings_field_empty_by_default(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("typecheck", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 3, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    result = runner.run()
+
+    assert result.warnings == []
+
+
+def _make_skip_stage(name: str, order: int) -> PipelineStage:
+    def _executor(_: StageContext) -> StageResult:
+        return StageResult(
+            stage_name=name,
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=0,
+            skipped_reason=f"{name} not installed",
+        )
+
+    return PipelineStage(
+        order=order,
+        name=name,
+        failure_mode=FailureMode.HARD,
+        requires_agent=False,
+        executor=_executor,
+    )
+
+
+def test_runner_hollow_pipeline_warning_when_core_stages_skip(tmp_path: Path) -> None:
+    stages = [
+        _make_skip_stage("lint", 1),
+        _make_skip_stage("typecheck", 2),
+        _make_skip_stage("test", 3),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    result = runner.run(force=True)
+
+    assert len(result.warnings) == 1
+    assert "No substantive validation" in result.warnings[0]
+    assert "uv sync --extra dev" in result.warnings[0]
+
+
+def test_runner_no_hollow_warning_when_some_core_stages_pass(tmp_path: Path) -> None:
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_skip_stage("typecheck", 2),
+        _make_skip_stage("test", 3),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    result = runner.run()
+
+    assert result.warnings == []

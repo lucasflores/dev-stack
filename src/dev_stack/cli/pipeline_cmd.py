@@ -9,6 +9,8 @@ import click
 from ..pipeline.agent_bridge import AgentBridge
 from ..pipeline.runner import PipelineRunResult, PipelineRunner
 from ..pipeline.stages import StageResult
+from ..manifest import StackManifest, read_manifest
+from ._constants import MANIFEST_FILENAME
 from .main import CLIContext, ExitCode, cli
 
 
@@ -26,7 +28,8 @@ def pipeline_run(ctx: CLIContext, stage_names: tuple[str, ...], force: bool) -> 
     """Execute the pre-commit pipeline."""
 
     repo_root = Path.cwd()
-    agent_bridge = AgentBridge(repo_root)
+    manifest = _try_load_manifest(repo_root)
+    agent_bridge = AgentBridge(repo_root, manifest=manifest)
     runner = PipelineRunner(repo_root, agent_bridge=agent_bridge)
     try:
         result = runner.run(force=force, stages=stage_names)
@@ -64,6 +67,7 @@ def _serialize_run(result: PipelineRunResult, force: bool) -> dict:
         "aborted_stage": result.aborted_stage,
         "skip_flag_detected": result.skip_flag_detected,
         "parallelized": result.parallelized,
+        "warnings": result.warnings,
         "stages": [_serialize_stage(stage) for stage in result.results],
     }
 
@@ -85,6 +89,8 @@ def _serialize_stage(stage: StageResult) -> dict:
 def _emit_human_readable(payload: dict) -> None:
     status = payload["status"]
     click.echo(f"Pipeline status: {status}")
+    for warning in payload.get("warnings", []):
+        click.echo(warning, err=True)
     if payload.get("skip_flag_detected"):
         if status == "success":
             click.echo(" - Previous commit skipped the pipeline; flag cleared")
@@ -101,3 +107,14 @@ def _emit_human_readable(payload: dict) -> None:
         click.echo(line)
         if stage.get("output"):
             click.echo(f"    {stage['output']}")
+
+
+def _try_load_manifest(repo_root: Path) -> StackManifest | None:
+    """Load dev-stack.toml if it exists, returning None on any error."""
+    manifest_path = repo_root / MANIFEST_FILENAME
+    if not manifest_path.exists():
+        return None
+    try:
+        return read_manifest(manifest_path)
+    except Exception:
+        return None

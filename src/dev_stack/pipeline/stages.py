@@ -170,7 +170,7 @@ def _execute_lint_stage(context: StageContext) -> StageResult:
             status=StageStatus.SKIP,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            skipped_reason="ruff not installed in project venv",
+            skipped_reason="ruff not installed in project venv — run 'uv sync --extra dev --extra docs' to install",
         )
     outputs: list[str] = []
     for command in (("ruff", "format", "--check", "."), ("ruff", "check", ".")):
@@ -202,7 +202,7 @@ def _execute_test_stage(context: StageContext) -> StageResult:
             status=StageStatus.SKIP,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            skipped_reason="pytest not installed in project venv",
+            skipped_reason="pytest not installed in project venv — run 'uv sync --extra dev --extra docs' to install",
         )
     tests_dir = context.repo_root / "tests"
     if not tests_dir.exists():
@@ -312,7 +312,7 @@ def _execute_typecheck_stage(context: StageContext) -> StageResult:
             status=StageStatus.SKIP,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            skipped_reason="mypy not installed in project venv",
+            skipped_reason="mypy not installed in project venv — run 'uv sync --extra dev --extra docs' to install",
         )
     success, output = _run_command(
         ("python3", "-m", "mypy", "src/"),
@@ -339,7 +339,7 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
             status=StageStatus.SKIP,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            skipped_reason="sphinx not found, skipping API docs",
+            skipped_reason="sphinx not found — run 'uv sync --extra dev --extra docs' to install",
         )
 
     # Check docs/ directory exists

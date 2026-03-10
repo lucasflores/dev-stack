@@ -52,8 +52,14 @@ def _emit_error(ctx: CLIContext, message: str) -> None:
 
 
 def _serialize_run(result: PipelineRunResult, force: bool) -> dict:
+    if result.success:
+        status = "success"
+    elif force:
+        status = "completed_with_failures"
+    else:
+        status = "failed"
     return {
-        "status": "success" if result.success else "failed",
+        "status": status,
         "forced": force,
         "aborted_stage": result.aborted_stage,
         "skip_flag_detected": result.skip_flag_detected,

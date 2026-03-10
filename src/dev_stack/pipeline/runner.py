@@ -113,7 +113,11 @@ class PipelineRunner:
                 aborted_stage = stage.name
                 abort_requested = True
 
-        success = aborted_stage is None or force
+        has_hard_failures = any(
+            r.status == StageStatus.FAIL and r.failure_mode == FailureMode.HARD
+            for r in results
+        )
+        success = not has_hard_failures
         if success and self._skip_flag_path.exists():
             self._skip_flag_path.unlink()
 

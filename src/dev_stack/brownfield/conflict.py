@@ -19,6 +19,30 @@ class ConflictType(str, Enum):
     DELETED = "deleted"
 
 
+def is_greenfield_uv_package(pyproject_path: Path) -> bool:
+    """Return True if pyproject.toml matches untouched ``uv init --package`` output."""
+    import tomllib
+
+    try:
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+    except (FileNotFoundError, tomllib.TOMLDecodeError):
+        return False
+
+    build_system = data.get("build-system", {})
+    if build_system.get("build-backend") != "uv_build":
+        return False
+
+    project = data.get("project", {})
+    if project.get("description") != "Add your description here":
+        return False
+
+    if "tool" in data:
+        return False
+
+    return True
+
+
 @dataclass(slots=True)
 class FileConflict:
     path: Path

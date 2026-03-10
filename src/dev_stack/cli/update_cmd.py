@@ -33,7 +33,7 @@ from .main import CLIContext, ExitCode, cli
 _UPDATE_MARKER = Path(".dev-stack") / "update-in-progress"
 
 
-@cli.command("update")
+@cli.command("update", help="Update dev-stack configuration and module files in an existing repository.")
 @click.option("--modules", "modules_csv", help="Comma-separated list of modules to update or add")
 @click.option("--force", is_flag=True, help="Apply updates without prompting when conflicts arise")
 @click.pass_obj

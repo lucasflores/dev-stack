@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -163,6 +164,14 @@ def build_pipeline_stages() -> list[PipelineStage]:
 
 def _execute_lint_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
+    if not _tool_available_in_venv("ruff", context.repo_root):
+        return StageResult(
+            stage_name="lint",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="ruff not installed in project venv",
+        )
     outputs: list[str] = []
     for command in (("ruff", "format", "--check", "."), ("ruff", "check", ".")):
         success, output = _run_command(command, context.repo_root)
@@ -187,6 +196,14 @@ def _execute_lint_stage(context: StageContext) -> StageResult:
 
 def _execute_test_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
+    if not _tool_available_in_venv("pytest", context.repo_root):
+        return StageResult(
+            stage_name="test",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="pytest not installed in project venv",
+        )
     tests_dir = context.repo_root / "tests"
     if not tests_dir.exists():
         return StageResult(
@@ -216,30 +233,67 @@ def _find_venv_site_packages(repo_root: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def has_unaudited_secrets(baseline_path: Path) -> bool:
+    """Return True if baseline contains findings not yet audited or confirmed real."""
+    with open(baseline_path) as f:
+        baseline = json.load(f)
+    for secrets in baseline.get("results", {}).values():
+        for secret in secrets:
+            if "is_secret" not in secret:
+                return True  # unaudited finding
+            if secret["is_secret"] is True:
+                return True  # confirmed real secret
+    return False
+
+
 def _execute_security_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
     outputs: list[str] = []
 
+    # pip-audit check
     pip_audit_cmd: list[str] = ["pip-audit", "--progress-spinner", "off"]
     site_pkgs = _find_venv_site_packages(context.repo_root)
     if site_pkgs:
         pip_audit_cmd.extend(["--path", str(site_pkgs)])
 
-    commands: list[tuple[str, ...]] = [
-        tuple(pip_audit_cmd),
-        ("detect-secrets", "scan", str(context.repo_root)),
-    ]
-    for command in commands:
-        success, output = _run_command(command, context.repo_root)
-        outputs.append(f"$ {' '.join(command)}\n{output or 'ok'}")
-        if not success:
-            return StageResult(
-                stage_name="security",
-                status=StageStatus.FAIL,
-                failure_mode=FailureMode.HARD,
-                duration_ms=_elapsed_ms(start),
-                output="\n\n".join(outputs),
-            )
+    success, output = _run_command(tuple(pip_audit_cmd), context.repo_root)
+    outputs.append(f"$ {' '.join(pip_audit_cmd)}\n{output or 'ok'}")
+    if not success:
+        return StageResult(
+            stage_name="security",
+            status=StageStatus.FAIL,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            output="\n\n".join(outputs),
+        )
+
+    # detect-secrets baseline workflow
+    baseline_path = context.repo_root / ".secrets.baseline"
+    if not baseline_path.exists():
+        outputs.append("detect-secrets: no .secrets.baseline found, skipping")
+        return StageResult(
+            stage_name="security",
+            status=StageStatus.PASS,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            output="\n\n".join(outputs),
+        )
+
+    scan_cmd = ("detect-secrets", "scan", "--baseline", str(baseline_path))
+    _run_command(scan_cmd, context.repo_root)
+    outputs.append(f"$ {' '.join(scan_cmd)}\nbaseline updated")
+
+    if has_unaudited_secrets(baseline_path):
+        outputs.append("detect-secrets: unaudited or confirmed-real secrets found")
+        return StageResult(
+            stage_name="security",
+            status=StageStatus.FAIL,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            output="\n\n".join(outputs),
+        )
+
+    outputs.append("detect-secrets: all findings audited as false positives")
     return StageResult(
         stage_name="security",
         status=StageStatus.PASS,
@@ -250,18 +304,15 @@ def _execute_security_stage(context: StageContext) -> StageResult:
 
 
 def _execute_typecheck_stage(context: StageContext) -> StageResult:
-    """Run mypy type checking against project source.
-
-    Placeholder — real implementation wired in T016/T018.
-    """
+    """Run mypy type checking against project source."""
     start = time.perf_counter()
-    if not shutil.which("mypy"):
+    if not _tool_available_in_venv("mypy", context.repo_root):
         return StageResult(
             stage_name="typecheck",
             status=StageStatus.SKIP,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            skipped_reason="mypy not found, skipping type check",
+            skipped_reason="mypy not installed in project venv",
         )
     success, output = _run_command(
         ("python3", "-m", "mypy", "src/"),
@@ -278,14 +329,10 @@ def _execute_typecheck_stage(context: StageContext) -> StageResult:
 
 def _execute_docs_api_stage(context: StageContext) -> StageResult:
     """Run Sphinx apidoc + build for deterministic API docs."""
-    import importlib.util
-
     start = time.perf_counter()
 
-    # Graceful skip if Sphinx not installed
-    has_sphinx = shutil.which("sphinx-build") is not None
-    if not has_sphinx:
-        has_sphinx = importlib.util.find_spec("sphinx") is not None
+    # Graceful skip if Sphinx not installed in project venv
+    has_sphinx = _tool_available_in_venv("sphinx-build", context.repo_root)
     if not has_sphinx:
         return StageResult(
             stage_name="docs-api",
@@ -731,6 +778,14 @@ def _detect_src_package(repo_root: Path) -> str | None:
         d.name for d in src_dir.iterdir() if d.is_dir() and (d / "__init__.py").is_file()
     )
     return candidates[0] if candidates else None
+
+
+def _tool_available_in_venv(tool: str, repo_root: Path) -> bool:
+    """Check if *tool* is available inside the project's .venv/bin."""
+    venv_bin = repo_root / ".venv" / "bin"
+    if not venv_bin.is_dir():
+        return False
+    return shutil.which(tool, path=str(venv_bin)) is not None
 
 
 def _build_venv_env(cwd: Path) -> dict[str, str] | None:

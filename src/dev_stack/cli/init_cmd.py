@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Sequence
 
@@ -13,6 +14,7 @@ from ..brownfield.conflict import (
     ConflictType,
     build_conflict_report,
     echo_conflict_summary,
+    is_greenfield_uv_package,
     resolve_conflicts_interactively,
     serialize_conflicts,
 )
@@ -56,7 +58,7 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
                 ctx, f"Unable to read existing manifest: {exc}", exit_code=ExitCode.GENERAL_ERROR
             )
             return
-    if already_initialized and not force:
+    if already_initialized and not force and not ctx.dry_run:
         _report_already_initialized(ctx)
         raise SystemExit(ExitCode.GENERAL_ERROR)
 
@@ -82,6 +84,25 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     module_instances = instantiate_modules(repo_root, manifest, module_names)
     detection_map, preview_lookup = collect_proposed_files(module_instances)
     conflict_report = build_conflict_report("init", repo_root, detection_map)
+
+    # FR-004/FR-005: Mark uv init --package files as greenfield predecessors
+    if is_greenfield_uv_package(repo_root / "pyproject.toml"):
+        src_dir = repo_root / "src"
+        pkg_names = sorted(
+            d.name for d in src_dir.iterdir()
+            if d.is_dir() and (d / "__init__.py").is_file()
+        ) if src_dir.is_dir() else []
+        predecessor_suffixes = {"pyproject.toml", ".python-version", "README.md"}
+        for pkg_name in pkg_names:
+            predecessor_suffixes.add(f"src/{pkg_name}/__init__.py")
+        for conflict in conflict_report.conflicts:
+            try:
+                rel = str(conflict.path.relative_to(repo_root))
+            except ValueError:
+                continue
+            if rel in predecessor_suffixes and conflict.resolution == "pending":
+                conflict.resolution = "greenfield_predecessor"
+
     existing_conflicts = has_existing_conflicts(conflict_report)
     mode = _determine_mode(already_initialized, existing_conflicts)
     manifest.mode = mode
@@ -119,11 +140,14 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
 
     rollback_ref = manifest.rollback_ref
     if should_create_rollback:
+        _ensure_initial_commit(repo_root)
         rollback_ref = create_rollback_tag(repo_root)
     if not ctx.dry_run:
         effective_force = force or existing_conflicts
         _install_modules(module_instances, force=effective_force)
         apply_post_install_overrides(skip_map, merge_map)
+        subprocess.run(["uv", "sync", "--all-extras"], cwd=str(repo_root), check=True)
+        _generate_secrets_baseline(repo_root)
         if should_write_manifest:
             manifest.rollback_ref = rollback_ref
             write_manifest(manifest, manifest_path)
@@ -142,6 +166,43 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
 def _install_modules(modules: Sequence[ModuleBase], force: bool) -> None:
     for module in modules:
         module.install(force=force)
+
+
+def _generate_secrets_baseline(repo_root: Path) -> None:
+    """Generate .secrets.baseline if detect-secrets is available."""
+    import shutil
+
+    if not shutil.which("detect-secrets"):
+        return
+    baseline_path = repo_root / ".secrets.baseline"
+    if baseline_path.exists():
+        return
+    with open(baseline_path, "w") as f:
+        subprocess.run(
+            ["detect-secrets", "scan"],
+            cwd=str(repo_root),
+            stdout=f,
+            check=False,
+        )
+
+
+def _ensure_initial_commit(repo_root: Path) -> None:
+    """Create an initial commit if the repository has no commits yet."""
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "--verify", "HEAD"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        return  # already has commits
+    subprocess.run(
+        ["git", "-C", str(repo_root), "add", "-A"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_root), "commit", "-m", "chore: initial commit for dev-stack init", "--allow-empty"],
+        check=True,
+    )
 
 
 def _emit_init_result(

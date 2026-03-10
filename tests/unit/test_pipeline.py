@@ -68,7 +68,7 @@ def test_runner_force_allows_hard_failure(tmp_path: Path) -> None:
 
     result = runner.run(force=True)
 
-    assert result.success
+    assert not result.success  # FR-006: hard failure means not successful, even with --force
     assert [stage.stage_name for stage in result.results] == ["lint", "test", "security"]
 
 

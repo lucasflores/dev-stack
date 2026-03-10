@@ -212,12 +212,12 @@ The `--incremental` flag compares SHA-256 hashes of source files against `.dev-s
 Run these checks after `dev-stack init` or `dev-stack update` to confirm everything is wired correctly. See [quickstart.md](specs/001-dev-stack-ecosystem/quickstart.md) for detailed scenarios.
 
 1. **CLI responds** — `dev-stack --help` prints all 12 commands without errors.
-2. **Modules healthy** — `dev-stack status --json` reports `healthy: true` for every installed module.
-3. **Pipeline passes** — `dev-stack pipeline run --force --json` completes stages 1–5 (hard gates) without failure.
-4. **Hooks installed** — `dev-stack hooks status --json` shows `commit-msg` and `pre-push` hooks with valid checksums.
-5. **Visualization works** — `dev-stack visualize --json` produces `.codeboarding/` output and injects Mermaid diagrams into README.
+2. **Modules healthy** — `dev-stack --json status` reports `healthy: true` for every installed module.
+3. **Pipeline passes** — `dev-stack --json pipeline run --force` completes stages 1–5 (hard gates) without failure.
+4. **Hooks installed** — `dev-stack --json hooks status` shows `commit-msg` and `pre-push` hooks with valid checksums.
+5. **Visualization works** — `dev-stack --json visualize` produces `.codeboarding/` output and injects Mermaid diagrams into README.
 6. **Config loads** — `grep 'tool.dev-stack' pyproject.toml` shows hooks, branch, and signing sections.
-7. **Brownfield safe** — `dev-stack init --dry-run --json` in an existing repo lists `conflicts` without modifying files.
+7. **Brownfield safe** — `dev-stack --dry-run --json init` in an existing repo lists `conflicts` without modifying files.
 8. **Rollback available** — `git tag -l 'dev-stack-rollback-*'` shows at least one rollback tag (requires at least one commit before `dev-stack init`).
 
 ## Configuration
@@ -306,7 +306,7 @@ uv run mypy src/
 uv run pytest --override-ini addopts='' tests
 
 # Generate architecture diagrams
-dev-stack visualize --json
+dev-stack --json visualize
 ```
 
 Before merging, rerun the [Validation Checklist](#validation-checklist) to keep hooks, pipeline, and visualization in sync.

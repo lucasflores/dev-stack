@@ -26,6 +26,8 @@ if ! command -v dev-stack >/dev/null 2>&1; then
   exit 0
 fi
 
+export DEV_STACK_HOOK_CONTEXT=pre-commit
+
 if dev-stack pipeline --help >/dev/null 2>&1; then
   dev-stack pipeline run "$@"
 else

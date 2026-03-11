@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -26,6 +28,52 @@ PARALLEL_STAGE_NAMES = {"lint", "test", "security"}
 SKIP_FLAG_RELATIVE = Path(".dev-stack") / "pipeline-skipped"
 PIPELINE_STATE_FILE = Path(".dev-stack") / "pipeline" / "last-run.json"
 
+logger = logging.getLogger(__name__)
+
+
+def _auto_stage_outputs(repo_root: Path, paths: list[Path]) -> list[str]:
+    """Stage pipeline output files into the git index.
+
+    Only stages paths that exist on disk, are not gitignored, and can be
+    successfully added.  Never raises exceptions — returns partial results
+    on failure.
+    """
+    staged: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        # Check if file is ignored by .gitignore
+        try:
+            result = subprocess.run(
+                ("git", "-C", str(repo_root), "check-ignore", "-q", str(path)),
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                # Path is gitignored — skip
+                continue
+        except Exception:
+            pass  # If check-ignore fails, proceed with staging attempt
+        # Stage the file
+        try:
+            result = subprocess.run(
+                ("git", "-C", str(repo_root), "add", str(path)),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                try:
+                    rel = str(path.relative_to(repo_root))
+                except ValueError:
+                    rel = str(path)
+                staged.append(rel)
+            else:
+                logger.warning("git add failed for %s: %s", path, result.stderr.strip())
+        except Exception as exc:
+            logger.warning("Failed to stage %s: %s", path, exc)
+    return staged
+
 
 @dataclass(slots=True)
 class PipelineRunResult:
@@ -37,6 +85,7 @@ class PipelineRunResult:
     skip_flag_detected: bool = False
     parallelized: bool = False
     warnings: list[str] = field(default_factory=list)
+    auto_staged_paths: list[str] = field(default_factory=list)
 
 
 class PipelineRunner:
@@ -66,12 +115,14 @@ class PipelineRunner:
         self._assert_valid_selection(selection, stage_defs)
 
         file_count = self._count_project_files()
+        hook_context = os.environ.get("DEV_STACK_HOOK_CONTEXT") or None
         base_context = StageContext(
             repo_root=self.repo_root,
             manifest=self.manifest,
             force=force,
             agent_bridge=self.agent_bridge,
             completed_results=[],
+            hook_context=hook_context,
         )
         results: list[StageResult] = []
         aborted_stage: str | None = None
@@ -132,6 +183,19 @@ class PipelineRunner:
                 "due to missing tools. Run 'uv sync --extra dev' to install."
             )
 
+        # Auto-stage pipeline output files when running as pre-commit hook
+        auto_staged: list[str] = []
+        if (
+            hook_context == "pre-commit"
+            and not base_context.dry_run
+        ):
+            output_paths: list[Path] = []
+            for r in results:
+                if r.status in (StageStatus.PASS, StageStatus.SKIP):
+                    output_paths.extend(r.output_paths)
+            if output_paths:
+                auto_staged = _auto_stage_outputs(self.repo_root, output_paths)
+
         summary = PipelineRunResult(
             results=results,
             success=success,
@@ -139,6 +203,7 @@ class PipelineRunner:
             skip_flag_detected=skip_flag_detected,
             parallelized=bool(processed_parallel),
             warnings=warnings,
+            auto_staged_paths=auto_staged,
         )
         self._record_pipeline_run(summary)
         return summary

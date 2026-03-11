@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Callable, Sequence
@@ -50,6 +50,7 @@ class StageResult:
     duration_ms: int
     output: str = ""
     skipped_reason: str | None = None
+    output_paths: list[Path] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -61,6 +62,8 @@ class StageContext:
     force: bool = False
     agent_bridge: AgentBridge | None = None
     completed_results: list[StageResult] | None = None
+    hook_context: str | None = None
+    dry_run: bool = False
 
     def without_agent(self) -> StageContext:
         """Return a shallow copy without the agent bridge for parallel execution."""
@@ -71,6 +74,8 @@ class StageContext:
             force=self.force,
             agent_bridge=None,
             completed_results=self.completed_results,
+            hook_context=self.hook_context,
+            dry_run=self.dry_run,
         )
 
 
@@ -246,6 +251,20 @@ def has_unaudited_secrets(baseline_path: Path) -> bool:
     return False
 
 
+def _baseline_findings_changed(old_content: str, new_content: str) -> bool:
+    """Compare two .secrets.baseline JSON strings, ignoring ``generated_at``.
+
+    Returns ``True`` if the ``results`` section differs between old and new.
+    Returns ``True`` if either string is not valid JSON (conservative).
+    """
+    try:
+        old_data = json.loads(old_content)
+        new_data = json.loads(new_content)
+    except (json.JSONDecodeError, TypeError):
+        return True
+    return old_data.get("results") != new_data.get("results")
+
+
 def _execute_security_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
     outputs: list[str] = []
@@ -279,9 +298,20 @@ def _execute_security_stage(context: StageContext) -> StageResult:
             output="\n\n".join(outputs),
         )
 
+    # Read existing baseline before scan overwrites it
+    old_content = baseline_path.read_text(encoding="utf-8")
+
     scan_cmd = ("detect-secrets", "scan", "--baseline", str(baseline_path), "--exclude-files", r"\.dev-stack/|\.secrets\.baseline")
     _run_command(scan_cmd, context.repo_root)
     outputs.append(f"$ {' '.join(scan_cmd)}\nbaseline updated")
+
+    # Read updated baseline and compare findings (ignoring generated_at)
+    new_content = baseline_path.read_text(encoding="utf-8")
+    findings_changed = _baseline_findings_changed(old_content, new_content)
+    if not findings_changed:
+        # Restore original file to avoid timestamp-only dirty working tree
+        baseline_path.write_text(old_content, encoding="utf-8")
+        outputs.append("detect-secrets: findings unchanged, preserved original baseline")
 
     if has_unaudited_secrets(baseline_path):
         outputs.append("detect-secrets: unaudited or confirmed-real secrets found")
@@ -300,6 +330,7 @@ def _execute_security_stage(context: StageContext) -> StageResult:
         failure_mode=FailureMode.HARD,
         duration_ms=_elapsed_ms(start),
         output="\n\n".join(outputs),
+        output_paths=[baseline_path] if findings_changed else [],
     )
 
 
@@ -427,12 +458,23 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
         outputs.append("sphinx build command not found")
         success = False
 
+    status = StageStatus.PASS if success else StageStatus.FAIL
+    generated_paths: list[Path] = []
+    if status == StageStatus.PASS:
+        api_dir = docs_dir / "api"
+        if api_dir.is_dir():
+            generated_paths.extend(sorted(api_dir.glob("*.rst")))
+        build_dir = docs_dir / "_build"
+        if build_dir.is_dir():
+            generated_paths.append(build_dir)
+
     return StageResult(
         stage_name="docs-api",
-        status=StageStatus.PASS if success else StageStatus.FAIL,
+        status=status,
         failure_mode=FailureMode.HARD,
         duration_ms=_elapsed_ms(start),
         output="\n\n".join(outputs),
+        output_paths=generated_paths,
     )
 
 
@@ -495,12 +537,18 @@ def _execute_docs_narrative_stage(context: StageContext) -> StageResult:
 
     # Write agent output to docs/guides/
     guides_index.write_text(response.content.strip() + "\n", encoding="utf-8")
+    guide_paths = [p for p in [
+        guides_dir / "quickstart.md",
+        guides_dir / "development.md",
+        guides_dir / "index.md",
+    ] if p.exists()]
     return StageResult(
         stage_name="docs-narrative",
         status=StageStatus.PASS,
         failure_mode=FailureMode.SOFT,
         duration_ms=_elapsed_ms(start),
         output=f"Updated narrative documentation in docs/guides/",
+        output_paths=guide_paths,
     )
 
 
@@ -541,6 +589,20 @@ def _execute_infra_sync_stage(context: StageContext) -> StageResult:
         duration_ms=_elapsed_ms(start),
         output="Templates and installed files are in sync",
     )
+
+
+LLM_API_KEY_VARS: tuple[str, ...] = (
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GOOGLE_API_KEY",
+    "MISTRAL_API_KEY",
+    "COHERE_API_KEY",
+)
+
+
+def _has_llm_api_key() -> bool:
+    """Return True if any supported LLM provider API key is set in the environment."""
+    return any(os.environ.get(key) for key in LLM_API_KEY_VARS)
 
 
 def _is_visualization_enabled(context: StageContext) -> bool:
@@ -602,6 +664,16 @@ def _execute_visualize_stage(context: StageContext) -> StageResult:
             skipped_reason="CodeBoarding CLI not found — install with: pip install codeboarding",
         )
 
+    if not _has_llm_api_key():
+        key_names = ", ".join(LLM_API_KEY_VARS)
+        return StageResult(
+            stage_name="visualize",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason=f"No LLM API key found. Set one of: {key_names}",
+        )
+
     outputs: list[str] = []
     try:
         result = cb_run(context.repo_root, incremental=True)
@@ -656,13 +728,37 @@ def _execute_visualize_stage(context: StageContext) -> StageResult:
             output="\n".join(outputs),
         )
 
+    viz_output_paths: list[Path] = []
+    if codeboarding_dir.is_dir():
+        viz_output_paths.extend(sorted(codeboarding_dir.iterdir()))
+
     return StageResult(
         stage_name="visualize",
         status=StageStatus.PASS,
         failure_mode=FailureMode.SOFT,
         duration_ms=_elapsed_ms(start),
         output="\n".join(outputs),
+        output_paths=viz_output_paths,
     )
+
+
+def _user_message_provided(repo_root: Path) -> bool:
+    """Detect if the user provided a commit message via ``-m`` flag.
+
+    Checks if ``.git/COMMIT_EDITMSG`` exists and contains non-comment content.
+    """
+    editmsg = repo_root / ".git" / "COMMIT_EDITMSG"
+    if not editmsg.exists():
+        return False
+    try:
+        text = editmsg.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return True
+    return False
 
 
 def _execute_commit_stage(context: StageContext) -> StageResult:
@@ -683,6 +779,15 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
             failure_mode=FailureMode.SOFT,
             duration_ms=_elapsed_ms(start),
             skipped_reason="commit message template missing",
+        )
+
+    if _user_message_provided(context.repo_root):
+        return StageResult(
+            stage_name="commit-message",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="User-supplied commit message detected (-m flag); skipping generated message",
         )
 
     diff_text = _read_git_diff(context.repo_root)

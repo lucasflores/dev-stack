@@ -181,14 +181,16 @@ Dependencies are resolved automatically — for example, Sphinx Docs requires UV
 | 5 | docs-api | Hard gate | `sphinx-apidoc` + `sphinx -b html -W --keep-going` |
 | 6 | docs-narrative | Soft gate | Agent-generated narrative docs in `docs/guides/` |
 | 7 | infra-sync | Soft gate | Checksums templates vs installed hooks/config for drift detection |
-| 8 | visualize | Soft gate | Runs CodeBoarding analysis and injects Mermaid diagrams into READMEs — skips when CodeBoarding CLI is absent or `[tool.dev-stack.pipeline] visualize = false` |
-| 9 | commit-message | Soft gate | Agent-generated structured commit narrative with conventional format and required trailers (`Spec-Ref`, `Task-Ref`, `Pipeline`, etc.) |
+| 8 | visualize | Soft gate | Runs CodeBoarding analysis and injects Mermaid diagrams into READMEs — skips when CodeBoarding CLI is absent, `[tool.dev-stack.pipeline] visualize = false`, or no LLM API key is configured |
+| 9 | commit-message | Soft gate | Agent-generated structured commit narrative with conventional format and required trailers (`Spec-Ref`, `Task-Ref`, `Pipeline`, etc.) — skips when user supplies `-m` message |
 
 - **Hard gates** (stages 1–5): halt the pipeline on failure — the commit is blocked.
 - **Soft gates** (stages 6–9): warn on failure but allow the commit to proceed; use `--force` to suppress warnings.
 - Stages `lint`, `test`, and `security` parallelize via `ProcessPoolExecutor` in repos with >500 files.
 - Agent-dependent stages (6, 9) skip gracefully when no coding agent CLI is detected.
 - Stage 8 (visualize) skips when CodeBoarding is not installed or visualization is disabled via config.
+- Stage 8 (visualize) requires an LLM API key. Set one of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, or `COHERE_API_KEY`. The stage skips gracefully with an actionable message when none are set.
+- Stage 9 (commit-message) skips when the user supplies a message via `git commit -m "..."`. User-supplied messages take precedence; the stage only generates structured messages in interactive commit mode.
 
 ## Visualization Workflow
 

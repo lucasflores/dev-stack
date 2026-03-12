@@ -222,7 +222,7 @@ Run these checks after `dev-stack init` or `dev-stack update` to confirm everyth
 5. **Visualization works** — `dev-stack --json visualize` produces `.codeboarding/` output and injects Mermaid diagrams into README.
 6. **Config loads** — `grep 'tool.dev-stack' pyproject.toml` shows hooks, branch, and signing sections.
 7. **Brownfield safe** — `dev-stack --dry-run --json init` in an existing repo lists `conflicts` without modifying files.
-8. **Rollback available** — `git tag -l 'dev-stack-rollback-*'` shows at least one rollback tag (requires at least one commit before `dev-stack init`).
+8. **Rollback available** — `git tag -l 'dev-stack/rollback/*'` shows at least one rollback tag (requires at least one commit before `dev-stack init`).
 
 ## Configuration
 

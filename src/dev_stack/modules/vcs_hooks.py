@@ -23,6 +23,13 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = PACKAGE_ROOT / "templates"
 HOOK_TEMPLATE_DIR = TEMPLATE_DIR / "hooks"
 
+# Agent CLI → canonical instruction file (relative to repo root)
+AGENT_FILE_MAP: dict[str, str] = {
+    "claude": "CLAUDE.md",
+    "copilot": ".github/copilot-instructions.md",
+    "cursor": ".cursorrules",
+}
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -207,6 +214,7 @@ class VcsHooksModule(ModuleBase):
     def uninstall(self) -> ModuleResult:
         """Remove managed hooks and clear manifest."""
         deleted: list[Path] = []
+        modified: list[Path] = []
         warnings: list[str] = []
 
         manifest = self._load_manifest()
@@ -236,6 +244,32 @@ class VcsHooksModule(ModuleBase):
             except Exception:
                 pass  # Best effort
 
+        # Clean up proactively-created agent file (FR-010)
+        agent_target = self._get_agent_file_path()
+        if agent_target is not None and agent_target.exists():
+            try:
+                # Remove the entire managed block (markers + content)
+                text = agent_target.read_text(encoding="utf-8")
+                start_marker = markers._marker_pair(agent_target, "DEV-STACK:INSTRUCTIONS")[0]
+                end_marker = markers._marker_pair(agent_target, "DEV-STACK:INSTRUCTIONS")[1]
+                start_idx = text.find(start_marker)
+                end_idx = text.find(end_marker, start_idx + len(start_marker)) if start_idx != -1 else -1
+                if start_idx != -1 and end_idx != -1:
+                    end_idx += len(end_marker)
+                    # Strip trailing newline left by marker block
+                    if end_idx < len(text) and text[end_idx] == "\n":
+                        end_idx += 1
+                    cleaned = text[:start_idx] + text[end_idx:]
+                    remaining = cleaned.strip()
+                    if not remaining:
+                        agent_target.unlink()
+                        deleted.append(agent_target)
+                    else:
+                        agent_target.write_text(cleaned, encoding="utf-8")
+                        modified.append(agent_target)
+            except OSError:
+                pass  # Best effort
+
         # Remove constitutional files
         for fname in ("constitution-template.md",):
             p = self.repo_root / fname
@@ -251,6 +285,7 @@ class VcsHooksModule(ModuleBase):
             success=True,
             message="VCS hooks removed",
             files_deleted=deleted,
+            files_modified=modified,
             warnings=warnings,
         )
 
@@ -297,10 +332,15 @@ class VcsHooksModule(ModuleBase):
         manifest.updated = datetime.now(timezone.utc).isoformat()
         self._save_manifest(manifest, [], modified)
 
+        # Refresh agent instruction file managed section on update
+        created: list[Path] = []
+        self._create_agent_file(created, modified, warnings)
+
         return ModuleResult(
             success=True,
             message="VCS hooks updated",
             files_modified=modified,
+            files_created=created,
             warnings=warnings,
         )
 
@@ -472,6 +512,42 @@ class VcsHooksModule(ModuleBase):
                 found.append(path)
         return found
 
+    def _get_agent_file_path(self) -> Path | None:
+        """Return absolute path for the detected agent's instruction file, or None."""
+        cli = self.manifest.get("agent", {}).get("cli", "none") if self.manifest else "none"
+        rel = AGENT_FILE_MAP.get(cli)
+        if rel is None:
+            return None
+        return self.repo_root / rel
+
+    def _create_agent_file(
+        self,
+        created: list[Path],
+        modified: list[Path],
+        warnings: list[str],
+    ) -> None:
+        """Proactively create the detected agent's instruction file with managed section."""
+        target = self._get_agent_file_path()
+        if target is None:
+            return
+
+        instructions_template = TEMPLATE_DIR / "instructions.md"
+        if not instructions_template.exists():
+            return
+
+        content = instructions_template.read_text(encoding="utf-8")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            existed = target.exists()
+            changed = markers.write_managed_section(target, "DEV-STACK:INSTRUCTIONS", content)
+            if changed:
+                if existed:
+                    modified.append(target)
+                else:
+                    created.append(target)
+        except OSError as exc:
+            warnings.append(f"Could not create agent file {target.name}: {exc}")
+
     def _generate_constitutional_files(
         self,
         created: list[Path],
@@ -540,6 +616,9 @@ class VcsHooksModule(ModuleBase):
                 except Exception as exc:
                     warnings.append(f"Could not inject instructions into {agent_file.name}: {exc}")
 
+        # Proactive agent file creation (010-proactive-agent-instructions)
+        self._create_agent_file(created, modified, warnings)
+
         # FR-032: Generate cliff.toml from template
         cliff_template = TEMPLATE_DIR / "cliff.toml"
         cliff_dest = self.repo_root / "cliff.toml"
@@ -566,6 +645,14 @@ class VcsHooksModule(ModuleBase):
             template_path = HOOK_TEMPLATE_DIR / template_name
             if template_path.exists():
                 result[Path(f".git/hooks/{hook_name}")] = template_path.read_text(encoding="utf-8")
+
+        # Include agent instruction file if an agent is configured
+        agent_path = self._get_agent_file_path()
+        if agent_path is not None:
+            instructions_template = TEMPLATE_DIR / "instructions.md"
+            if instructions_template.exists():
+                result[agent_path.relative_to(self.repo_root)] = instructions_template.read_text(encoding="utf-8")
+
         return result
 
     def _configure_signing(self, warnings: list[str]) -> None:

@@ -218,3 +218,131 @@ class TestVerify:
         status = module.verify()
         assert status.healthy is False
         assert "checksum mismatch" in status.issue
+
+
+# ---------------------------------------------------------------------------
+# Agent file creation tests (US1)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentFileCreation:
+    """Tests for proactive agent instruction file creation (010)."""
+
+    @pytest.fixture
+    def claude_module(self, repo: Path) -> VcsHooksModule:
+        return VcsHooksModule(repo, {"agent": {"cli": "claude"}})
+
+    def test_init_creates_agent_file_for_claude(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        result = claude_module.install()
+        agent_file = repo / "CLAUDE.md"
+        assert agent_file.exists()
+        content = agent_file.read_text()
+        assert "DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS" in content
+        assert "DEV-STACK:END:DEV-STACK:INSTRUCTIONS" in content
+
+    def test_init_creates_copilot_instructions_with_github_dir(self, repo: Path) -> None:
+        module = VcsHooksModule(repo, {"agent": {"cli": "copilot"}})
+        module.install()
+        agent_file = repo / ".github" / "copilot-instructions.md"
+        assert agent_file.exists()
+        assert (repo / ".github").is_dir()
+        content = agent_file.read_text()
+        assert "DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS" in content
+
+    def test_init_creates_cursorrules_file(self, repo: Path) -> None:
+        module = VcsHooksModule(repo, {"agent": {"cli": "cursor"}})
+        module.install()
+        agent_file = repo / ".cursorrules"
+        assert agent_file.exists()
+        content = agent_file.read_text()
+        assert "DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS" in content
+
+    def test_init_no_agent_skips_agent_file(self, repo: Path) -> None:
+        module = VcsHooksModule(repo, {"agent": {"cli": "none"}})
+        module.install()
+        assert not (repo / "CLAUDE.md").exists()
+        assert not (repo / ".github" / "copilot-instructions.md").exists()
+        assert not (repo / ".cursorrules").exists()
+
+    def test_init_agent_file_in_files_created(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        result = claude_module.install()
+        agent_path = repo / "CLAUDE.md"
+        assert agent_path in result.files_created
+
+    def test_init_preserves_existing_agent_file_content(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        """Brownfield: existing user content is preserved when managed section is added."""
+        agent_file = repo / "CLAUDE.md"
+        agent_file.write_text("# My Custom Rules\n\nDo not touch my stuff.\n")
+        claude_module.install()
+        content = agent_file.read_text()
+        assert "My Custom Rules" in content
+        assert "Do not touch my stuff." in content
+        assert "DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS" in content
+
+    def test_reinit_updates_managed_section_idempotently(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        """Calling install twice should leave exactly one managed section."""
+        claude_module.install()
+        claude_module.install()
+        content = (repo / "CLAUDE.md").read_text()
+        assert content.count("DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS") == 1
+        assert content.count("DEV-STACK:END:DEV-STACK:INSTRUCTIONS") == 1
+
+
+# ---------------------------------------------------------------------------
+# Agent file lifecycle tests (US3)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentFileLifecycle:
+    """Tests for update and uninstall of agent instruction files (010 US3)."""
+
+    @pytest.fixture
+    def claude_module(self, repo: Path) -> VcsHooksModule:
+        return VcsHooksModule(repo, {"agent": {"cli": "claude"}})
+
+    def test_update_refreshes_agent_file_managed_section(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        claude_module.install()
+        agent_file = repo / "CLAUDE.md"
+        assert agent_file.exists()
+        # The update should succeed and keep the managed section
+        result = claude_module.update()
+        assert result.success is True
+        content = agent_file.read_text()
+        assert "DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS" in content
+
+    def test_update_after_agent_switch_creates_new_file(self, repo: Path) -> None:
+        """Switching agent creates new file; old file remains."""
+        claude_mod = VcsHooksModule(repo, {"agent": {"cli": "claude"}})
+        claude_mod.install()
+        assert (repo / "CLAUDE.md").exists()
+        # Now update with copilot manifest
+        copilot_mod = VcsHooksModule(repo, {"agent": {"cli": "copilot"}})
+        result = copilot_mod.update()
+        assert result.success is True
+        assert (repo / ".github" / "copilot-instructions.md").exists()
+        # Old claude file should still exist untouched
+        assert (repo / "CLAUDE.md").exists()
+
+    def test_uninstall_deletes_devstack_only_agent_file(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        """Agent file with only managed content gets deleted on uninstall."""
+        claude_module.install()
+        agent_file = repo / "CLAUDE.md"
+        assert agent_file.exists()
+        result = claude_module.uninstall()
+        assert result.success is True
+        assert not agent_file.exists()
+        assert agent_file in result.files_deleted
+
+    def test_uninstall_preserves_user_content_in_agent_file(self, claude_module: VcsHooksModule, repo: Path) -> None:
+        """Agent file with user content should keep file but remove managed section."""
+        claude_module.install()
+        agent_file = repo / "CLAUDE.md"
+        # Append user content outside the managed block
+        original = agent_file.read_text()
+        agent_file.write_text(original + "\n# My custom rules\n")
+        result = claude_module.uninstall()
+        assert result.success is True
+        assert agent_file.exists()
+        content = agent_file.read_text()
+        assert "My custom rules" in content
+        assert "DEV-STACK:BEGIN:DEV-STACK:INSTRUCTIONS" not in content

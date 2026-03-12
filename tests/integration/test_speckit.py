@@ -64,3 +64,19 @@ def test_specify_scaffold_and_cli_available() -> None:
         )
         assert proc.returncode == 0
         assert "spec-kit" in proc.stdout.strip()
+
+        # LazySpecKit prompt installed
+        prompt_path = Path(".github/prompts/LazySpecKit.prompt.md")
+        assert prompt_path.exists(), "LazySpecKit prompt not installed"
+        assert prompt_path.stat().st_size > 0
+
+        # Vendored reviewers installed
+        reviewers_dir = Path(".lazyspeckit/reviewers")
+        assert reviewers_dir.is_dir(), ".lazyspeckit/reviewers directory missing"
+        reviewer_files = list(reviewers_dir.glob("*.md"))
+        # At minimum the 2 vendored reviewers (code-quality.md, test.md) must be present
+        vendored_names = {"code-quality.md", "test.md"}
+        installed_names = {f.name for f in reviewer_files}
+        assert vendored_names.issubset(installed_names), (
+            f"Missing vendored reviewers: {vendored_names - installed_names}"
+        )

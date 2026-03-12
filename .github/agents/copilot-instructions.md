@@ -20,6 +20,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-10
 - JSON files (`.secrets.baseline`, pipeline state), filesystem (docs, `.codeboarding/`) (009-pipeline-commit-hygiene)
 - Python 3.11+ + Click (CLI), tomli/tomli-w (TOML), pathlib (filesystem) (010-proactive-agent-instructions)
 - Filesystem — repo-local files managed by brownfield markers (010-proactive-agent-instructions)
+- Python 3.11+ (3.12.9 in development) + click >=8.1, gitlint-core >=0.19, rich >=13.7, pathspec >=0.12 (011-pipeline-commit-fixes)
+- Filesystem (`.git/COMMIT_EDITMSG`, `.dev-stack/logs/`, `.dev-stack/pending-docs.md`) (011-pipeline-commit-fixes)
 
 - Python 3.11+ + `click` (CLI framework), `tomli`/`tomli-w` (TOML read/write), `rich` (terminal output), `d2` CLI (diagrams) (001-dev-stack-ecosystem)
 
@@ -39,9 +41,9 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
+- 011-pipeline-commit-fixes: Added Python 3.11+ (3.12.9 in development) + click >=8.1, gitlint-core >=0.19, rich >=13.7, pathspec >=0.12
+- 011-pipeline-commit-fixes: Added Python 3.11+ (3.12.9 in development) + click >=8.1, gitlint-core >=0.19, rich >=13.7, pathspec >=0.12
 - 010-proactive-agent-instructions: Added Python 3.11+ + Click (CLI), tomli/tomli-w (TOML), pathlib (filesystem)
-- 009-pipeline-commit-hygiene: Added Python 3.12 (minimum 3.10+) + detect-secrets, sphinx, codeboarding (optional), git CLI
-- 008-greenfield-init-fixes: Added Python 3.11+ + click (CLI framework), tomli_w/tomllib (TOML read/write), uv (package manager)
 
 
 <!-- MANUAL ADDITIONS START -->

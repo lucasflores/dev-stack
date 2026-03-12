@@ -79,6 +79,7 @@ class AgentBridge:
         context_files: Sequence[Path] | None = None,
         timeout_seconds: int = 120,
         system_prompt: str | None = None,
+        sandbox: bool = False,
     ) -> AgentResponse:
         info = self._agent_info or detect_agent(self.manifest)
         self._agent_info = info
@@ -94,7 +95,7 @@ class AgentBridge:
         if system_prompt and info.cli != "claude":
             rendered_prompt = f"System instruction: {system_prompt}\n\n{rendered_prompt}"
 
-        spec = self._build_command(info, rendered_prompt, json_output, system_prompt)
+        spec = self._build_command(info, rendered_prompt, json_output, system_prompt, sandbox=sandbox)
         self._log_debug(
             "agent_bridge.invoke.start",
             {
@@ -194,6 +195,8 @@ class AgentBridge:
         prompt: str,
         json_output: bool,
         system_prompt: str | None,
+        *,
+        sandbox: bool = False,
     ) -> CommandSpec:
         agent_cli = info.path or info.cli
         if info.cli == "claude":
@@ -201,11 +204,11 @@ class AgentBridge:
             cmd.extend(["--output-format", "json" if json_output else "text"])
             if system_prompt:
                 cmd.extend(["--system-prompt", system_prompt])
+            if sandbox:
+                cmd.extend(["--disallowedTools", "Edit,Write,Bash"])
             return CommandSpec(cmd=cmd, input_text=prompt, env=None)
         if info.cli == "copilot":
             env = os.environ.copy()
-            env.setdefault("COPILOT_ALLOW_ALL", "true")
-            env.setdefault("NO_COLOR", os.environ.get("NO_COLOR", "1"))
             tmp = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
             try:
                 tmp.write(prompt)
@@ -225,12 +228,26 @@ class AgentBridge:
                 "--",
                 "-p",
                 f"@{tmp.name}",
-                "--allow-all",
                 "--no-auto-update",
             ]
+            if sandbox:
+                cmd.extend([
+                    "--deny-tool='write'",
+                    "--allow-tool='read_file'",
+                    "--allow-tool='grep_search'",
+                    "--allow-tool='file_search'",
+                    "--allow-tool='semantic_search'",
+                    "--allow-tool='list_dir'",
+                ])
+            else:
+                env.setdefault("COPILOT_ALLOW_ALL", "true")
+                cmd.append("--allow-all")
+            env.setdefault("NO_COLOR", os.environ.get("NO_COLOR", "1"))
             return CommandSpec(cmd=cmd, input_text=None, env=env, cleanup=_cleanup)
         if info.cli == "cursor":
             cmd = [agent_cli, "--prompt", "-"]
+            if sandbox:
+                cmd.extend(["--disallowedTools", "Edit,Write,Bash"])
             return CommandSpec(cmd=cmd, input_text=prompt, env=None)
         raise AgentUnavailableError("AgentBridge")
 

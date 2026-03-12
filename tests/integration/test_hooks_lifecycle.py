@@ -97,3 +97,51 @@ class TestHooksLifecycle:
         assert result.success
         assert (git_repo / ".git" / "hooks" / "commit-msg").exists()
         assert (git_repo / ".git" / "hooks" / "pre-push").exists()
+
+
+class TestPrepareCommitMsgHookLifecycle:
+    """Integration tests for the prepare-commit-msg hook."""
+
+    def test_hook_installed_when_pre_commit_enabled(self, git_repo: Path) -> None:
+        """prepare-commit-msg hook is installed alongside pre-commit."""
+        # Enable pre-commit in config
+        pyproject = git_repo / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\nname = "test"\n\n[tool.dev-stack.hooks]\n'
+            'commit-msg = true\npre-push = true\npre-commit = true\n'
+        )
+        module = VcsHooksModule(git_repo)
+        result = module.install()
+        assert result.success
+        pcm_hook = git_repo / ".git" / "hooks" / "prepare-commit-msg"
+        assert pcm_hook.exists()
+        # Verify it's in the manifest
+        manifest_path = git_repo / ".dev-stack" / "hooks-manifest.json"
+        manifest_data = json.loads(manifest_path.read_text())
+        assert "prepare-commit-msg" in manifest_data["hooks"]
+
+    def test_hook_not_installed_when_pre_commit_disabled(self, git_repo: Path) -> None:
+        """prepare-commit-msg hook is NOT installed when pre-commit is disabled."""
+        module = VcsHooksModule(git_repo)
+        result = module.install()
+        assert result.success
+        pcm_hook = git_repo / ".git" / "hooks" / "prepare-commit-msg"
+        assert not pcm_hook.exists()
+
+    def test_source_arg_skips_for_dash_m(self, git_repo: Path) -> None:
+        """run_prepare_commit_msg_hook exits 0 when source='message'."""
+        from dev_stack.vcs.hooks_runner import run_prepare_commit_msg_hook
+
+        msg_file = git_repo / ".git" / "COMMIT_EDITMSG"
+        msg_file.write_text("user message\n")
+        result = run_prepare_commit_msg_hook(str(msg_file), source="message")
+        assert result == 0
+
+    def test_source_arg_skips_for_amend(self, git_repo: Path) -> None:
+        """run_prepare_commit_msg_hook exits 0 when source='commit'."""
+        from dev_stack.vcs.hooks_runner import run_prepare_commit_msg_hook
+
+        msg_file = git_repo / ".git" / "COMMIT_EDITMSG"
+        msg_file.write_text("amend message\n")
+        result = run_prepare_commit_msg_hook(str(msg_file), source="commit", commit_sha="abc123")
+        assert result == 0

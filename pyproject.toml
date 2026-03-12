@@ -44,7 +44,7 @@ where = ["src"]
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=dev_stack.pipeline --cov-report=term-missing --cov-fail-under=65"
+addopts = "--cov=dev_stack.pipeline --cov-report=term-missing --cov-fail-under=65 -p no:indico"
 testpaths = [
   "tests",
 ]

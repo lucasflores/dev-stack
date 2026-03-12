@@ -28,7 +28,31 @@ PARALLEL_STAGE_NAMES = {"lint", "test", "security"}
 SKIP_FLAG_RELATIVE = Path(".dev-stack") / "pipeline-skipped"
 PIPELINE_STATE_FILE = Path(".dev-stack") / "pipeline" / "last-run.json"
 
+# Hook-context-aware stage filtering: which stages run in which hook
+HOOK_STAGE_MAP: dict[str, list[int]] = {
+    "pre-commit": [1, 2],
+    "prepare-commit-msg": [3, 4, 5, 6, 7, 8, 9],
+}
+
 logger = logging.getLogger(__name__)
+
+
+def _configure_debug_logging() -> None:
+    """Activate file-based debug logging when ``DEV_STACK_DEBUG=1``."""
+    if os.environ.get("DEV_STACK_DEBUG") != "1":
+        return
+    log_dir = Path(".dev-stack") / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    handler = logging.FileHandler(log_dir / f"pipeline-{timestamp}.log")
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+    logging.getLogger("dev_stack").addHandler(handler)
+    logging.getLogger("dev_stack").setLevel(logging.DEBUG)
 
 
 def _auto_stage_outputs(repo_root: Path, paths: list[Path]) -> list[str]:
@@ -110,12 +134,26 @@ class PipelineRunner:
     def run(self, *, force: bool = False, stages: Sequence[str] | None = None) -> PipelineRunResult:
         """Execute the pipeline and return detailed results."""
 
+        _configure_debug_logging()
+
         selection = {name.lower() for name in stages} if stages else None
         stage_defs = list(self._stages or build_pipeline_stages())
         self._assert_valid_selection(selection, stage_defs)
 
         file_count = self._count_project_files()
         hook_context = os.environ.get("DEV_STACK_HOOK_CONTEXT") or None
+
+        # Filter stages by hook context when running inside a git hook
+        allowed_orders = HOOK_STAGE_MAP.get(hook_context) if hook_context else None
+        if allowed_orders is not None:
+            skipped_names = [s.name for s in stage_defs if s.order not in allowed_orders]
+            stage_defs = [s for s in stage_defs if s.order in allowed_orders]
+            for name in skipped_names:
+                logger.debug(
+                    "stage_skip hook_context=%s stage=%s reason=hook_filter",
+                    hook_context, name,
+                )
+
         base_context = StageContext(
             repo_root=self.repo_root,
             manifest=self.manifest,

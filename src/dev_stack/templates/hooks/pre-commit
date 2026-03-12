@@ -28,8 +28,8 @@ fi
 
 export DEV_STACK_HOOK_CONTEXT=pre-commit
 
-if dev-stack pipeline --help >/dev/null 2>&1; then
-  dev-stack pipeline run "$@"
+if dev-stack hooks --help >/dev/null 2>&1; then
+  dev-stack hooks run pre-commit "$@"
 else
-  echo "$HOOK_LABEL: pipeline command unavailable; skipping" >&2
+  echo "$HOOK_LABEL: hooks command unavailable; skipping" >&2
 fi

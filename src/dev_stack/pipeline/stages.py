@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Callable, Sequence
@@ -16,8 +18,11 @@ from typing import Callable, Sequence
 from ..manifest import StackManifest
 from .agent_bridge import AgentBridge
 from .commit_format import TrailerData, upsert_trailers
+from .response_parser import extract_commit_message
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+
+logger = logging.getLogger(__name__)
 PROMPT_TEMPLATE = PACKAGE_ROOT / "templates" / "prompts" / "docs_update.txt"
 COMMIT_PROMPT_TEMPLATE = PACKAGE_ROOT / "templates" / "prompts" / "commit_message.txt"
 DOC_SECTION_BEGIN = "<!-- === DEV-STACK:DOCS:BEGIN === -->"
@@ -80,6 +85,38 @@ class StageContext:
 
 
 StageExecutor = Callable[[StageContext], StageResult]
+
+
+class StagedContentViolation(Exception):
+    """Raised when an agent stage modifies staged content during hook execution."""
+
+
+@dataclass(frozen=True)
+class StagedSnapshot:
+    """Lightweight hash of the staging area state for integrity verification."""
+
+    diff_hash: str
+    file_list_hash: str
+    captured_at: float
+
+    @classmethod
+    def capture(cls) -> StagedSnapshot:
+        """Capture current staging area state as hashes."""
+        diff = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True, text=True, check=False,
+        ).stdout
+        names = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True, text=True, check=False,
+        ).stdout
+        return cls(
+            diff_hash=hashlib.sha256(diff.encode()).hexdigest(),
+            file_list_hash=hashlib.sha256(
+                "\n".join(sorted(names.strip().splitlines())).encode()
+            ).hexdigest(),
+            captured_at=time.perf_counter(),
+        )
 
 
 @dataclass(slots=True)
@@ -524,7 +561,22 @@ def _execute_docs_narrative_stage(context: StageContext) -> StageResult:
         existing_section = guides_index.read_text(encoding="utf-8")
 
     prompt = _render_docs_prompt(diff_text, existing_section, context.repo_root.name)
-    response = agent.invoke(prompt, json_output=False, timeout_seconds=120)
+
+    # Determine sandbox mode for hook context
+    sandbox_mode = context.hook_context is not None
+
+    if sandbox_mode:
+        snapshot_before = StagedSnapshot.capture()
+
+    response = agent.invoke(prompt, json_output=False, timeout_seconds=120, sandbox=sandbox_mode)
+
+    if sandbox_mode:
+        snapshot_after = StagedSnapshot.capture()
+        if snapshot_before.diff_hash != snapshot_after.diff_hash:
+            raise StagedContentViolation(
+                f"Stage 'docs-narrative' modified staged content"
+            )
+
     if not response.success:
         message = response.error or response.content or "Documentation agent failed"
         return StageResult(
@@ -535,7 +587,20 @@ def _execute_docs_narrative_stage(context: StageContext) -> StageResult:
             output=message,
         )
 
-    # Write agent output to docs/guides/
+    if sandbox_mode:
+        # Advisory mode: save suggestions to .dev-stack/pending-docs.md
+        _append_advisory_suggestion(
+            "docs-narrative", response.content, str(guides_index.relative_to(context.repo_root))
+        )
+        return StageResult(
+            stage_name="docs-narrative",
+            status=StageStatus.PASS,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            output="[docs-narrative] Suggestions saved to .dev-stack/pending-docs.md",
+        )
+
+    # Direct mode: write to file (default CLI behavior)
     guides_index.write_text(response.content.strip() + "\n", encoding="utf-8")
     guide_paths = [p for p in [
         guides_dir / "quickstart.md",
@@ -742,25 +807,6 @@ def _execute_visualize_stage(context: StageContext) -> StageResult:
     )
 
 
-def _user_message_provided(repo_root: Path) -> bool:
-    """Detect if the user provided a commit message via ``-m`` flag.
-
-    Checks if ``.git/COMMIT_EDITMSG`` exists and contains non-comment content.
-    """
-    editmsg = repo_root / ".git" / "COMMIT_EDITMSG"
-    if not editmsg.exists():
-        return False
-    try:
-        text = editmsg.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            return True
-    return False
-
-
 def _execute_commit_stage(context: StageContext) -> StageResult:
     start = time.perf_counter()
     agent = context.agent_bridge
@@ -781,14 +827,8 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
             skipped_reason="commit message template missing",
         )
 
-    if _user_message_provided(context.repo_root):
-        return StageResult(
-            stage_name="commit-message",
-            status=StageStatus.SKIP,
-            failure_mode=FailureMode.SOFT,
-            duration_ms=_elapsed_ms(start),
-            skipped_reason="User-supplied commit message detected (-m flag); skipping generated message",
-        )
+    # Source-arg gating is handled by run_prepare_commit_msg_hook().
+    # When running outside of a hook (CLI), always generate.
 
     diff_text = _read_git_diff(context.repo_root)
     staged_files = _list_staged_files(context.repo_root)
@@ -839,7 +879,21 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
         task_ref=task_ref,
     )
 
-    response = agent.invoke(prompt, json_output=False, timeout_seconds=180)
+    # Determine if we're in hook context (sandbox agents)
+    sandbox_mode = context.hook_context is not None
+
+    if sandbox_mode:
+        snapshot_before = StagedSnapshot.capture()
+
+    response = agent.invoke(prompt, json_output=False, timeout_seconds=180, sandbox=sandbox_mode)
+
+    if sandbox_mode:
+        snapshot_after = StagedSnapshot.capture()
+        if snapshot_before.diff_hash != snapshot_after.diff_hash:
+            raise StagedContentViolation(
+                f"Stage 'commit-message' modified staged content"
+            )
+
     if not response.success or not response.content.strip():
         message = response.error or response.content or "Agent returned empty commit message"
         return StageResult(
@@ -850,6 +904,17 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
             output=message,
         )
 
+    parsed = extract_commit_message(response.content)
+    if parsed is None:
+        logger.warning("Failed to extract commit message from agent response")
+        return StageResult(
+            stage_name="commit-message",
+            status=StageStatus.WARN,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            output="Failed to extract clean commit message from agent response",
+        )
+
     trailers = TrailerData(
         spec_ref=spec_ref,
         task_ref=task_ref,
@@ -857,14 +922,17 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
         pipeline=pipeline_summary,
         edited=False,
     )
-    commit_text = upsert_trailers(response.content.strip(), trailers)
+    commit_text = upsert_trailers(parsed.raw_content, trailers)
     output_path = _write_commit_message(context.repo_root, commit_text)
     return StageResult(
         stage_name="commit-message",
         status=StageStatus.PASS,
         failure_mode=FailureMode.SOFT,
         duration_ms=_elapsed_ms(start),
-        output=f"Wrote commit message via {agent_name} to {output_path.relative_to(context.repo_root)}",
+        output=(
+            f"Wrote commit message via {agent_name}"
+            f" to {output_path.relative_to(context.repo_root)}"
+        ),
     )
 
 
@@ -1075,3 +1143,20 @@ def _write_commit_message(repo_root: Path, commit_text: str) -> Path:
     target = git_dir / "COMMIT_EDITMSG"
     target.write_text(commit_text.rstrip() + "\n", encoding="utf-8")
     return target
+
+
+def _append_advisory_suggestion(
+    stage_name: str,
+    content: str,
+    target_path: str,
+) -> None:
+    """Append a doc suggestion to ``.dev-stack/pending-docs.md`` instead of writing directly."""
+    pending = Path(".dev-stack/pending-docs.md")
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    section = (
+        f"\n## [{stage_name}] — {timestamp}\n\n"
+        f"**Target**: {target_path}\n\n{content}\n\n---\n"
+    )
+    with pending.open("a") as f:
+        f.write(section)

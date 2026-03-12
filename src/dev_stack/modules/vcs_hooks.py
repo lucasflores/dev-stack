@@ -137,6 +137,7 @@ class VcsHooksModule(ModuleBase):
     MANAGED_FILES: Sequence[str] = (
         ".git/hooks/commit-msg",
         ".git/hooks/pre-push",
+        ".git/hooks/prepare-commit-msg",
         ".dev-stack/hooks-manifest.json",
         ".dev-stack/instructions.md",
         ".specify/templates/constitution-template.md",
@@ -165,6 +166,8 @@ class VcsHooksModule(ModuleBase):
             hooks_to_install.append(("pre-push", "pre-push.py"))
         if config.hooks.pre_commit:
             hooks_to_install.append(("pre-commit", "pre-commit.py"))
+            # prepare-commit-msg runs stages 3-9 (paired with pre-commit's 1-2)
+            hooks_to_install.append(("prepare-commit-msg", "prepare-commit-msg.py"))
 
         # Install each hook
         for hook_name, template_name in hooks_to_install:

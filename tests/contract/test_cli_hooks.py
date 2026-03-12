@@ -109,3 +109,41 @@ class TestHooksStatusJsonSchema:
         # Find the modified hook
         modified_hooks = [h for h in data["hooks"] if h.get("modified")]
         assert len(modified_hooks) >= 1
+
+
+class TestPrepareCommitMsgHookInstallation:
+    """Contract: prepare-commit-msg template is installed alongside pre-commit."""
+
+    def test_prepare_commit_msg_installed_with_pre_commit(self, tmp_path: Path) -> None:
+        """When pre-commit is enabled, prepare-commit-msg must also be installed."""
+        import subprocess
+
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True, check=True)
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\nname = "test"\n\n[tool.dev-stack.hooks]\n'
+            'commit-msg = true\npre-push = true\npre-commit = true\n'
+        )
+        (tmp_path / ".dev-stack").mkdir(exist_ok=True)
+
+        from dev_stack.modules.vcs_hooks import VcsHooksModule
+
+        module = VcsHooksModule(tmp_path)
+        result = module.install()
+        assert result.success
+
+        pcm_hook = tmp_path / ".git" / "hooks" / "prepare-commit-msg"
+        assert pcm_hook.exists(), "prepare-commit-msg hook must be installed"
+
+        # Verify manifest includes it
+        manifest_data = json.loads(
+            (tmp_path / ".dev-stack" / "hooks-manifest.json").read_text()
+        )
+        assert "prepare-commit-msg" in manifest_data["hooks"]
+
+    def test_template_exists_in_package(self) -> None:
+        """The prepare-commit-msg templates must exist in the package."""
+        from dev_stack.modules.vcs_hooks import HOOK_TEMPLATE_DIR
+
+        assert (HOOK_TEMPLATE_DIR / "prepare-commit-msg").exists()
+        assert (HOOK_TEMPLATE_DIR / "prepare-commit-msg.py").exists()

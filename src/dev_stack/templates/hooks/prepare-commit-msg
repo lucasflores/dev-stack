@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# managed by dev-stack — do not edit manually
+set -euo pipefail
+
+HOOK_LABEL="[dev-stack] prepare-commit-msg"
+
+if [[ "${DEV_STACK_NO_HOOKS:-0}" == "1" ]]; then
+  echo "$HOOK_LABEL: skipping (DEV_STACK_NO_HOOKS=1)" >&2
+  exit 0
+fi
+
+if ! command -v dev-stack >/dev/null 2>&1; then
+  echo "$HOOK_LABEL: dev-stack CLI not found in PATH" >&2
+  exit 0
+fi
+
+COMMIT_MSG_FILE="${1:-}"
+COMMIT_SOURCE="${2:-}"
+COMMIT_SHA="${3:-}"
+
+exec dev-stack hooks run prepare-commit-msg "$COMMIT_MSG_FILE" "$COMMIT_SOURCE" "$COMMIT_SHA"

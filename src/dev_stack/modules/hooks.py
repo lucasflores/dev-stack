@@ -17,7 +17,7 @@ class HooksModule(ModuleBase):
 
     NAME = "hooks"
     VERSION = "0.1.0"
-    MANAGED_FILES = (".pre-commit-config.yaml", "scripts/hooks/pre-commit")
+    MANAGED_FILES = (".pre-commit-config.yaml", "scripts/hooks/pre-commit", "scripts/hooks/prepare-commit-msg")
 
     def install(self, *, force: bool = False) -> ModuleResult:
         scripts_dir = self.repo_root / "scripts" / "hooks"
@@ -38,6 +38,14 @@ class HooksModule(ModuleBase):
         hook_dest = self.repo_root / ".git" / "hooks" / "pre-commit"
         hook_dest.parent.mkdir(parents=True, exist_ok=True)
         self._copy_with_permission(script_template, hook_dest, 0o755, force, created, modified)
+
+        # Install prepare-commit-msg hook (stages 3-9)
+        pcm_template = TEMPLATE_DIR / "prepare-commit-msg"
+        if pcm_template.exists():
+            pcm_hook_dest = self.repo_root / ".git" / "hooks" / "prepare-commit-msg"
+            self._copy_with_permission(pcm_template, pcm_hook_dest, 0o755, force, created, modified)
+            pcm_script_dest = scripts_dir / "prepare-commit-msg"
+            self._copy_with_permission(pcm_template, pcm_script_dest, 0o755, force, created, modified)
 
         return ModuleResult(
             success=True,

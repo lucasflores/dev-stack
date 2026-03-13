@@ -94,7 +94,7 @@ _DEFAULT_DS_CONFIG: dict[str, Any] = {
         "pre-commit": True,
     },
     "branch": {
-        "pattern": "^(main|master|develop|feature/.+|bugfix/.+|hotfix/.+|release/.+)$",
+        "pattern": "^(main|master|develop|feature/.+|bugfix/.+|hotfix/.+|release/.+|\\d{3}-.+)$",
         "exempt": ["main", "master"],
     },
     "signing": {

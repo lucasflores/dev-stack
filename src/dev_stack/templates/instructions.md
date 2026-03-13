@@ -18,6 +18,41 @@ Do **not**:
 - Commit test code separately from the production code it covers.
 - Commit code whose tests fail.
 
+## Commit Message Format
+
+Every commit message must follow **Conventional Commits** with structured body sections.
+
+### Subject line
+
+```
+<type>(<scope>): <description>   (max 72 characters)
+```
+
+Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+
+### Body sections
+
+Include these sections (each introduced with a `##` heading) in order:
+
+1. **Intent** — why this change exists.
+2. **Reasoning** — critical decisions and trade-offs.
+3. **Scope** — components and files touched.
+4. **Narrative** — 3–5 sentences summarizing the change for future AI agents.
+
+### Trailers (agent commits)
+
+If you are an AI agent, append these trailers at the end of the message:
+
+```
+Spec-Ref: specs/<id>/spec.md
+Task-Ref: specs/<id>/tasks.md
+Agent: <agent-name>
+Pipeline: lint=pass,typecheck=pass,test=pass,...
+Edited: false
+```
+
+Manual (human) commits only require the conventional commit subject line.
+
 ## Test-Driven Development
 
 Follow the **Red-Green-Refactor** cycle:

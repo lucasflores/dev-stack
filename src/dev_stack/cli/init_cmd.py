@@ -190,7 +190,7 @@ def _generate_secrets_baseline(repo_root: Path) -> None:
         return
     with open(baseline_path, "w") as f:
         subprocess.run(
-            ["detect-secrets", "scan", "--exclude-files", r"\.dev-stack/|\.secrets\.baseline"],
+            ["detect-secrets", "scan", "--exclude-files", r"\.dev-stack/|\.secrets\.baseline|\.lazyspeckit/"],
             cwd=str(repo_root),
             stdout=f,
             check=False,

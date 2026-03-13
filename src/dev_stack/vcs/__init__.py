@@ -23,7 +23,7 @@ class HooksConfig:
 
     commit_msg: bool = True
     pre_push: bool = True
-    pre_commit: bool = False
+    pre_commit: bool = True
 
 
 @dataclass(slots=True)

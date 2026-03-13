@@ -206,6 +206,28 @@ def test_build_pipeline_stages_returns_nine_stages() -> None:
         assert stage.requires_agent == agent
 
 
+def test_security_scan_excludes_lazyspeckit() -> None:
+    """Issue 2: detect-secrets scan command must exclude .lazyspeckit/ directory."""
+    from dev_stack.pipeline.stages import _execute_security_stage
+
+    import inspect
+    source = inspect.getsource(_execute_security_stage)
+    assert r"\.lazyspeckit/" in source, (
+        "Security stage scan_cmd must exclude .lazyspeckit/ directory"
+    )
+
+
+def test_init_baseline_excludes_lazyspeckit() -> None:
+    """Issue 2: _generate_secrets_baseline must exclude .lazyspeckit/ directory."""
+    from dev_stack.cli.init_cmd import _generate_secrets_baseline
+
+    import inspect
+    source = inspect.getsource(_generate_secrets_baseline)
+    assert r"\.lazyspeckit/" in source, (
+        "Baseline generation must exclude .lazyspeckit/ directory"
+    )
+
+
 # ---------------------------------------------------------------------------
 # T006 / FR-004: Remediation hints in skip messages
 # ---------------------------------------------------------------------------

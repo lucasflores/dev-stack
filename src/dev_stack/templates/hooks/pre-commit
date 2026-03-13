@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# managed by dev-stack — do not edit manually
 set -euo pipefail
 
 HOOK_LABEL="[dev-stack] pre-commit"

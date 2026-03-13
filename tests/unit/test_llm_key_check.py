@@ -28,3 +28,14 @@ def test_returns_false_when_keys_are_empty_strings() -> None:
     env = {k: "" for k in LLM_API_KEY_VARS}
     with patch.dict("os.environ", env, clear=True):
         assert _has_llm_api_key() is False
+
+
+def test_gemini_api_key_in_vars() -> None:
+    """GEMINI_API_KEY should be recognized as a valid LLM key."""
+    assert "GEMINI_API_KEY" in LLM_API_KEY_VARS
+
+
+def test_returns_true_for_gemini_key() -> None:
+    """GEMINI_API_KEY alone should make _has_llm_api_key() return True."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}, clear=True):
+        assert _has_llm_api_key() is True

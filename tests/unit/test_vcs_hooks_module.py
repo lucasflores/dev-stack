@@ -37,6 +37,26 @@ def module(repo: Path) -> VcsHooksModule:
 # ---------------------------------------------------------------------------
 
 
+class TestDefaultConfig:
+    def test_default_branch_pattern_accepts_speckit_branches(self) -> None:
+        """Issue 5: _DEFAULT_DS_CONFIG branch pattern must accept NNN-slug format."""
+        import re
+        from dev_stack.modules.vcs_hooks import _DEFAULT_DS_CONFIG
+
+        pattern = _DEFAULT_DS_CONFIG["branch"]["pattern"]
+        assert re.fullmatch(pattern, "001-fortune-command")
+        assert re.fullmatch(pattern, "042-some-feature")
+        assert re.fullmatch(pattern, "feature/my-feature")
+        assert re.fullmatch(pattern, "main")
+
+    def test_hooks_config_pre_commit_default_true(self) -> None:
+        """Issue 1: HooksConfig.pre_commit must default to True."""
+        from dev_stack.vcs import HooksConfig
+
+        config = HooksConfig()
+        assert config.pre_commit is True
+
+
 class TestHookManifest:
     def test_to_dict_round_trip(self) -> None:
         entry = HookEntry(checksum="abc123", installed_at="2026-01-01T00:00:00Z", template_version="0.1.0")

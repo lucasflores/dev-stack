@@ -189,7 +189,7 @@ Dependencies are resolved automatically — for example, Sphinx Docs requires UV
 - Stages `lint`, `test`, and `security` parallelize via `ProcessPoolExecutor` in repos with >500 files.
 - Agent-dependent stages (6, 9) skip gracefully when no coding agent CLI is detected.
 - Stage 8 (visualize) skips when CodeBoarding is not installed or visualization is disabled via config.
-- Stage 8 (visualize) requires an LLM API key. Set one of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, or `COHERE_API_KEY`. The stage skips gracefully with an actionable message when none are set.
+- Stage 8 (visualize) requires an LLM API key. Set one of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, or `COHERE_API_KEY`. The stage skips gracefully with an actionable message when none are set.
 - Stage 9 (commit-message) skips when the user supplies a message via `git commit -m "..."`. User-supplied messages take precedence; the stage only generates structured messages in interactive commit mode.
 
 ## Visualization Workflow
@@ -232,11 +232,11 @@ Dev-Stack reads its configuration from `[tool.dev-stack.*]` tables in `pyproject
 [tool.dev-stack.hooks]
 commit-msg = true       # Conventional-commit linting via gitlint + custom rules
 pre-push = true         # Branch naming + signing enforcement
-pre-commit = false      # Lint + typecheck on staged files
+pre-commit = true       # Lint + typecheck on staged files
 
 [tool.dev-stack.branch]
-pattern = "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)/[a-z0-9._-]+$"
-exempt = ["main", "master", "develop", "staging", "production"]
+pattern = "^(main|master|develop|feature/.+|bugfix/.+|hotfix/.+|release/.+|\\d{3}-.+)$"
+exempt = ["main", "master"]
 
 [tool.dev-stack.signing]
 enabled = false         # Enable SSH commit signing

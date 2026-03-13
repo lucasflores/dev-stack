@@ -338,7 +338,7 @@ def _execute_security_stage(context: StageContext) -> StageResult:
     # Read existing baseline before scan overwrites it
     old_content = baseline_path.read_text(encoding="utf-8")
 
-    scan_cmd = ("detect-secrets", "scan", "--baseline", str(baseline_path), "--exclude-files", r"\.dev-stack/|\.secrets\.baseline")
+    scan_cmd = ("detect-secrets", "scan", "--baseline", str(baseline_path), "--exclude-files", r"\.dev-stack/|\.secrets\.baseline|\.lazyspeckit/")
     _run_command(scan_cmd, context.repo_root)
     outputs.append(f"$ {' '.join(scan_cmd)}\nbaseline updated")
 
@@ -660,6 +660,7 @@ LLM_API_KEY_VARS: tuple[str, ...] = (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "GOOGLE_API_KEY",
+    "GEMINI_API_KEY",
     "MISTRAL_API_KEY",
     "COHERE_API_KEY",
 )

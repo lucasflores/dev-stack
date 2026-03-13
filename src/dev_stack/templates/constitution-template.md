@@ -29,6 +29,66 @@ is the smallest set of changes that:
 
 ---
 
+## Commit Message Format
+
+Every commit message in this repository must follow **Conventional Commits** with
+structured body sections. The `commit-msg` hook enforces this format automatically.
+
+### Subject line
+
+```
+<type>(<scope>): <description>   (max 72 characters)
+```
+
+Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
+`ci`, `chore`, `revert`.
+
+### Body sections
+
+Include these sections in order, each introduced with a `##` heading:
+
+1. **Intent** — why this change exists.
+2. **Reasoning** — critical decisions and trade-offs.
+3. **Scope** — components and files touched.
+4. **Narrative** — 3–5 sentences summarizing the change for future AI agents.
+   Commit history serves as persistent memory; write narratives that enable
+   future context retrieval.
+
+### Trailers (required for agent commits)
+
+If the commit is authored by an AI agent, the following trailers are **required**
+at the end of the message body:
+
+```
+Spec-Ref: specs/<id>/spec.md
+Task-Ref: specs/<id>/tasks.md
+Agent: <agent-name>
+Pipeline: lint=pass,typecheck=pass,test=pass,...
+Edited: false
+```
+
+| Trailer | Description |
+|---------|-------------|
+| `Spec-Ref` | Path to the specification file (relative to repo root) |
+| `Task-Ref` | Path to the tasks file (relative to repo root) |
+| `Agent` | Name of the AI agent that authored the commit |
+| `Pipeline` | Comma-separated `stage=status` pairs from the automation pipeline |
+| `Edited` | `true` if a human edited the agent's output, `false` otherwise |
+
+### Manual (human) commits
+
+Human-authored commits only require a valid conventional commit subject line.
+Trailers are optional for manual commits — the `commit-msg` hook only enforces
+trailers when an `Agent:` trailer is present.
+
+### What the hook rejects
+
+- A subject that does not match `type(scope): description`.
+- An agent commit missing any of the five required trailers.
+- A `Spec-Ref` or `Task-Ref` path that does not exist in the repository.
+
+---
+
 ## Test-Driven Development
 
 Follow the **Red-Green-Refactor** cycle for every code change:

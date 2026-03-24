@@ -1,7 +1,7 @@
 # Feature Specification: APM Module Swap
 
 **Feature Branch**: `013-apm-module-swap`  
-**Created**: 2025-03-24  
+**Created**: 2026-03-24  
 **Status**: Draft  
 **Input**: User description: "Replace mcp_servers module with apm module that delegates MCP server management to Microsoft's Agent Package Manager (APM) CLI"
 
@@ -100,7 +100,7 @@ A security-conscious developer wants to audit their MCP server configurations fo
 - **FR-002**: The `apm` module MUST bootstrap an `apm.yml` manifest file at the project root when one does not already exist.
 - **FR-003**: The bootstrapped `apm.yml` MUST be seeded with 5 default MCP server packages: context7, github, sequential-thinking, huggingface, and notebooklm.
 - **FR-004**: The `apm` module MUST invoke the APM CLI to install MCP server declarations into agent-native directories (e.g., `.claude/`, `.github/`, `.cursor/`, `.opencode/`).
-- **FR-005**: The `apm` module MUST produce an `apm.lock.yaml` lockfile that pins exact versions of installed packages after installation.
+- **FR-005**: The `apm` module MUST ensure that `apm install` generates an `apm.lock.yaml` lockfile that pins exact versions of installed packages after installation.
 - **FR-006**: The `apm` module MUST detect when the APM CLI is not available on PATH and report a clear, actionable error message.
 - **FR-007**: The `apm` module MUST check that the installed APM CLI version meets the minimum supported version and warn the user if it does not.
 - **FR-008**: Users MUST be able to add community-contributed APM packages to their `apm.yml` and have them installed alongside the defaults.
@@ -108,8 +108,8 @@ A security-conscious developer wants to audit their MCP server configurations fo
 - **FR-010**: The `mcp_servers` module MUST be removed from the default module set (`DEFAULT_GREENFIELD_MODULES`) and replaced by the `apm` module.
 - **FR-011**: The `mcp_servers` module MUST remain functional when explicitly listed in a project's `dev-stack.toml` manifest (opt-in backward compatibility).
 - **FR-012**: When the legacy `mcp_servers` module is explicitly invoked, the system MUST display a deprecation warning recommending migration to the `apm` module.
-- **FR-013**: When `apm.yml` already exists, the `apm` module MUST prompt the user to choose one of three actions: skip (use existing file as-is), merge (additively insert missing defaults), or overwrite (replace with fresh defaults). The module MUST NOT silently overwrite user customizations.
-- **FR-014**: The `apm` module MUST surface clear error messages when APM package resolution or registry access fails.
+- **FR-013**: When `apm.yml` already exists, the `apm` module MUST prompt the user to choose one of three actions: skip (use existing file as-is), merge (additively insert missing defaults), or overwrite (replace with fresh defaults). The module MUST NOT silently overwrite user customizations. In non-interactive environments (e.g., CI), the module MUST default to "skip" to preserve brownfield safety. The merge operation MUST identify servers by name regardless of format (registry URI vs self-defined dict) to avoid duplicates.
+- **FR-014**: The `apm` module MUST surface actionable error messages when APM package resolution or registry access fails. Error messages MUST include the failed package name and a suggestion (e.g., check spelling, verify registry access).
 - **FR-015**: When APM installation fails mid-way (e.g., network timeout after partial install), the module MUST report which servers succeeded and which failed, leave the partial state intact, and allow the user to re-run to complete installation (fail-forward, no rollback).
 - **FR-016**: The `apm` module MUST expose explicit CLI subcommands (`dev-stack apm install`, `dev-stack apm audit`) in addition to running automatically during `dev-stack init`, mirroring the existing `dev-stack mcp` subcommand pattern.
 
@@ -130,8 +130,8 @@ A security-conscious developer wants to audit their MCP server configurations fo
 - **SC-003**: Two separate machines with the same `apm.lock.yaml` produce identical MCP server configurations after running init.
 - **SC-004**: Users can add any APM-compatible community package to `apm.yml` and have it installed alongside defaults without modifying dev-stack source code.
 - **SC-005**: The `mcp_servers` module no longer executes during default init; it functions only when explicitly opted into via `dev-stack.toml`.
-- **SC-006**: Running the audit operation against installed packages produces a security scan report with zero false negatives on test fixtures containing known issues.
-- **SC-007**: The net lines of custom MCP config-rendering code maintained by dev-stack is reduced by removing the ~270 LOC `mcp_servers` module from the default path.
+- **SC-006**: Running `dev-stack apm audit` correctly invokes `apm audit`, passes format/output arguments through to APM, and surfaces APM's exit code and report content to the user.
+- **SC-007**: The ~270 LOC `mcp_servers` module is no longer on the default code path for new projects. MCP config rendering is fully delegated to APM for default installations.
 
 ## Assumptions
 

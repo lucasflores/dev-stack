@@ -19,6 +19,7 @@ from ..brownfield.conflict import (
     serialize_conflicts,
 )
 from ..brownfield.rollback import create_rollback_tag
+from ..brownfield.markers import write_managed_section
 from ..config import AgentInfo, detect_agent
 from ..errors import ManifestError
 from ..manifest import AgentConfig, StackManifest, create_default, read_manifest, write_manifest
@@ -79,7 +80,7 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     should_create_rollback = not ctx.dry_run and should_write_manifest
 
     agent_info = detect_agent(manifest)
-    manifest.agent = AgentConfig(cli=agent_info.cli, path=agent_info.path)
+    manifest.agent = AgentConfig(cli=agent_info.cli)
 
     module_instances = instantiate_modules(repo_root, manifest, module_names)
     detection_map, preview_lookup = collect_proposed_files(module_instances)
@@ -147,18 +148,20 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
         effective_force = force or existing_conflicts or is_greenfield
         _install_modules(module_instances, force=effective_force)
         apply_post_install_overrides(skip_map, merge_map)
-        try:
-            subprocess.run(["uv", "sync", "--all-extras"], cwd=str(repo_root), check=True)
-        except subprocess.CalledProcessError as exc:
-            msg = (
-                f"uv sync --all-extras failed (exit code {exc.returncode}). "
-                "Retry with: uv sync --extra dev --extra docs"
-            )
-            if ctx.json_output:
-                click.echo(json.dumps({"warning": msg}), err=True)
-            else:
-                click.echo(f"Warning: {msg}", err=True)
-        _generate_secrets_baseline(repo_root)
+        if "uv_project" in module_names:
+            try:
+                subprocess.run(["uv", "sync", "--all-extras"], cwd=str(repo_root), check=True)
+            except subprocess.CalledProcessError as exc:
+                msg = (
+                    f"uv sync --all-extras failed (exit code {exc.returncode}). "
+                    "Retry with: uv sync --extra dev --extra docs"
+                )
+                if ctx.json_output:
+                    click.echo(json.dumps({"warning": msg}), err=True)
+                else:
+                    click.echo(f"Warning: {msg}", err=True)
+        # TODO(012): Re-enable when a dedicated secrets module is added to _MODULE_REGISTRY
+        _ensure_gitignore_managed_section(repo_root)
         if should_write_manifest:
             manifest.rollback_ref = rollback_ref
             write_manifest(manifest, manifest_path)
@@ -197,6 +200,11 @@ def _generate_secrets_baseline(repo_root: Path) -> None:
         )
 
 
+def _ensure_gitignore_managed_section(repo_root: Path) -> None:
+    """Ensure .dev-stack/ is in .gitignore via a managed section."""
+    write_managed_section(repo_root / ".gitignore", "GITIGNORE", ".dev-stack/")
+
+
 def _ensure_initial_commit(repo_root: Path) -> None:
     """Create an initial commit if the repository has no commits yet."""
     result = subprocess.run(
@@ -232,7 +240,7 @@ def _emit_init_result(
         "manifest_path": manifest_path,
         "modules_installed": list(modules_installed),
         "rollback_ref": rollback_ref,
-        "agent": {"cli": agent.cli, "path": agent.path},
+        "agent": {"cli": agent.cli},
     }
     payload["conflicts"] = conflicts or []
     if ctx.json_output:

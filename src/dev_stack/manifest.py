@@ -39,19 +39,16 @@ class AgentConfig:
     detected_at: datetime = field(default_factory=_now_utc)
 
     def to_dict(self) -> dict[str, Any]:
-        payload = {
+        return {
             "cli": self.cli,
             "detected_at": self.detected_at.astimezone(timezone.utc).strftime(ISO_FORMAT),
         }
-        if self.path is not None:
-            payload["path"] = self.path
-        return payload
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "AgentConfig":
         detected = data.get("detected_at")
         detected_dt = _parse_datetime(detected) if detected else _now_utc()
-        return cls(cli=data.get("cli", "none"), path=data.get("path"), detected_at=detected_dt)
+        return cls(cli=data.get("cli", "none"), path=None, detected_at=detected_dt)
 
 
 @dataclass

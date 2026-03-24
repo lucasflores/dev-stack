@@ -1,25 +1,3 @@
-repos:
-  - repo: local
-    hooks:
-      - id: dev-stack-pipeline
-        name: dev-stack pipeline
-        entry: dev-stack pipeline run
-        language: system
-        pass_filenames: false
-        stages: [commit]
-      - id: dev-stack-ruff
-        name: ruff lint
-        entry: ruff check
-        language: system
-        pass_filenames: true
-      - id: dev-stack-pytest
-        name: pytest quick suite
-        entry: pytest -q
-        language: system
-        pass_filenames: false
-      - id: dev-stack-mypy
-        name: mypy type check
-        entry: python3 -m mypy src/
-        language: system
-        pass_filenames: false
-        types: [python]
+# DEPRECATED: This static template is superseded by programmatic generation
+# in HooksModule.install() (src/dev_stack/modules/hooks.py).
+# Retained only for reference. Do not modify.

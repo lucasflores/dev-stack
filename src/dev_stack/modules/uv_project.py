@@ -213,6 +213,8 @@ _STANDARD_GITIGNORE_ENTRIES = [
     ".venv/",
     ".dev-stack/pipeline/",
     ".dev-stack/viz/",
+    ".codeboarding/cache/",
+    ".codeboarding/logs/",
     "dist/",
     "*.egg-info/",
 ]

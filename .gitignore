@@ -35,5 +35,9 @@ Thumbs.db
 .tmp/
 *.log
 
+# CodeBoarding runtime files
+.codeboarding/cache/
+.codeboarding/logs/
+
 # Spec Kit artifacts
 .specify/cache/

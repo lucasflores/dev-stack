@@ -73,4 +73,4 @@ def version(ctx: CLIContext) -> None:
 
 
 # Register subcommands
-from . import changelog_cmd, hooks_cmd, init_cmd, mcp_cmd, pipeline_cmd, pr_cmd, release_cmd, rollback_cmd, status_cmd, update_cmd, visualize_cmd  # noqa: E402,F401
+from . import apm_cmd, changelog_cmd, hooks_cmd, init_cmd, mcp_cmd, pipeline_cmd, pr_cmd, release_cmd, rollback_cmd, status_cmd, update_cmd, visualize_cmd  # noqa: E402,F401

@@ -57,6 +57,14 @@ class MCPServersModule(ModuleBase):
 
     # ------------------------------------------------------------------
     def install(self, *, force: bool = False) -> ModuleResult:
+        import warnings as _warnings
+
+        _warnings.warn(
+            "The 'mcp-servers' module is deprecated. Migrate to the 'apm' module: "
+            "replace 'mcp-servers' with 'apm' in your dev-stack.toml.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         result, _, _ = self.install_selected(None, force=force)
         return result
 

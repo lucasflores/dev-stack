@@ -103,7 +103,7 @@ dev-stack --json init
 git add -A && git commit -m "chore: initial dev-stack setup"
 
 # Brownfield — augment an existing repo (safe conflict detection)
-dev-stack --json init --dry-run   # preview what will change
+dev-stack --dry-run --json init   # preview what will change
 dev-stack --json init             # apply
 ```
 
@@ -133,13 +133,15 @@ dev-stack --json init             # apply
 
 Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `speckit`, `vcs_hooks`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
 
+> **Edge case — existing repo, no conflicts:** If a repo already has commits and content but none of its files overlap with dev-stack's proposed assets, init treats it as greenfield. This is safe because greenfield mode only *adds* new files — it never modifies or deletes existing content.
+
 After init, commit the generated files with `git add -A && git commit -m "chore: initial dev-stack setup"`. The pre-commit hooks will pass cleanly. Use the [Validation Checklist](#validation-checklist) for ongoing verification.
 
 ## CLI Essentials
 
 | Command | What it does |
 |---------|--------------|
-| `dev-stack init [--modules ...]` | Detects greenfield/brownfield mode, installs modules, writes `dev-stack.toml`, records rollback tag |
+| `dev-stack init [--modules ...]` | Detects greenfield/brownfield mode, installs modules, writes `dev-stack.toml`, records rollback tag. Repos with existing content but no file overlap with proposed assets are treated as greenfield (no conflicts to resolve). |
 | `dev-stack update [--modules ...]` | Refreshes managed sections or adds modules; detects new defaults and prompts interactively |
 | `dev-stack rollback [--ref TAG]` | Restores files to the last (or specified) rollback tag and cleans up intermediate tags |
 | `dev-stack mcp install\|verify` | Writes MCP server configs for the detected agent and runs health checks |

@@ -3,7 +3,7 @@
 **Feature Branch**: `009-pipeline-commit-hygiene`
 **Created**: 2026-03-10
 **Status**: Draft
-**Input**: User description: "Fix 6 issues discovered during end-to-end greenfield init testing of dev-stack v0.1.0 in a fresh repository (bishop-fox). These issues fall into two themes: (1) the pre-commit pipeline mutates the working tree during hook execution, making the first commit require multiple attempts and leaving perpetually dirty state; and (2) soft-gate stages (6, 8, 9) have documentation gaps, silent failures, or misleading status reports."
+**Input**: User description: "Fix 6 issues discovered during end-to-end greenfield init testing of dev-stack v0.1.0 in a fresh repository. These issues fall into two themes: (1) the pre-commit pipeline mutates the working tree during hook execution, making the first commit require multiple attempts and leaving perpetually dirty state; and (2) soft-gate stages (6, 8, 9) have documentation gaps, silent failures, or misleading status reports."
 
 ## User Scenarios & Testing *(mandatory)*
 

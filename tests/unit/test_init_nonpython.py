@@ -149,7 +149,7 @@ def test_full_nonpython_init_produces_clean_config(tmp_path: Path) -> None:
     assert ".dev-stack/" in gitignore
 
     # Manifest: no absolute paths
-    manifest = create_default(["hooks", "speckit", "vcs_hooks"])
+    manifest = create_default(["hooks", "apm", "vcs_hooks"])
     manifest.agent = AgentConfig(cli="claude")
     manifest_path = tmp_path / "dev-stack.toml"
     write_manifest(manifest, manifest_path)

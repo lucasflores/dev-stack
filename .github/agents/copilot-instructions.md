@@ -26,6 +26,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-10
 - TOML files (dev-stack.toml), YAML files (.pre-commit-config.yaml), git hooks (012-universal-init-pipeline)
 - Python 3.12+ + click (CLI), tomli/tomllib (TOML parsing), subprocess (APM CLI invocation), shutil (which/PATH lookup), pyyaml or ruamel.yaml (apm.yml generation) (013-apm-module-swap)
 - File-based — `apm.yml`, `apm.lock.yaml`, agent-native config dirs (`.claude/`, `.github/`, `.cursor/`, `.opencode/`) (013-apm-module-swap)
+- Python 3.11+ (pyproject.toml: `requires-python = ">=3.11"`) + Click (CLI), PyYAML (apm.yml generation), `subprocess` (APM CLI invocation), `tomli-w` (TOML writing), `packaging` (version comparison) (014-apm-module-swap)
+- File-based (`apm.yml`, `apm.lock.yaml`, `dev-stack.toml`) (014-apm-module-swap)
 
 - Python 3.11+ + `click` (CLI framework), `tomli`/`tomli-w` (TOML read/write), `rich` (terminal output), `d2` CLI (diagrams) (001-dev-stack-ecosystem)
 
@@ -45,6 +47,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
+- 014-apm-module-swap: Added Python 3.11+ (pyproject.toml: `requires-python = ">=3.11"`) + Click (CLI), PyYAML (apm.yml generation), `subprocess` (APM CLI invocation), `tomli-w` (TOML writing), `packaging` (version comparison)
 - 012-universal-init-pipeline: Added Python 3.11+ + click, tomli_w, tomllib, gitlint-core, pathlib
 - 013-apm-module-swap: Added Python 3.12+ + click (CLI), subprocess (APM CLI invocation), PyYAML (apm.yml generation)
 

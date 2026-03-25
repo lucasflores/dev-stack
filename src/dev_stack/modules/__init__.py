@@ -12,7 +12,15 @@ from .base import ModuleBase
 ModuleClass = Type[ModuleBase]
 
 _MODULE_REGISTRY: Dict[str, ModuleClass] = {}
-DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "speckit", "apm", "vcs_hooks")
+DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks")
+
+DEPRECATED_MODULES: dict[str, str] = {
+	"speckit": (
+		"The 'speckit' module has been removed. "
+		"Agent dependencies are now managed by the 'apm' module. "
+		"Run 'specify init --here --ai copilot' to set up the .specify/ directory."
+	),
+}
 
 
 def register_module(cls: ModuleClass) -> ModuleClass:
@@ -95,4 +103,4 @@ def latest_module_entries(module_names: Sequence[str] | None = None) -> dict[str
 
 
 # Import built-in modules so they register themselves.
-from . import apm, ci_workflows, docker, hooks, mcp_servers, speckit, sphinx_docs, uv_project, vcs_hooks, visualization  # noqa: E402,F401
+from . import apm, ci_workflows, docker, hooks, mcp_servers, sphinx_docs, uv_project, vcs_hooks, visualization  # noqa: E402,F401

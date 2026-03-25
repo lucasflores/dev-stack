@@ -14,7 +14,7 @@ from .errors import ManifestError
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DEFAULT_STACK_VERSION = "0.1.0"
 DEFAULT_MODULE_VERSION = "0.1.0"
-DEFAULT_MODULES = ("hooks", "speckit")
+DEFAULT_MODULES = ("hooks",)
 
 
 def _now_utc() -> datetime:
@@ -57,6 +57,7 @@ class ModuleEntry:
     installed: bool = True
     depends_on: list[str] = field(default_factory=list)
     config: dict[str, Any] = field(default_factory=dict)
+    deprecated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -67,6 +68,8 @@ class ModuleEntry:
             data["depends_on"] = list(self.depends_on)
         if self.config:
             data["config"] = self.config
+        if self.deprecated:
+            data["deprecated"] = True
         return data
 
     @classmethod
@@ -76,6 +79,7 @@ class ModuleEntry:
             installed=bool(data.get("installed", True)),
             depends_on=list(data.get("depends_on", [])),
             config=dict(data.get("config", {})),
+            deprecated=bool(data.get("deprecated", False)),
         )
 
 

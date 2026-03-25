@@ -1,12 +1,13 @@
 """Unit tests for the dev-stack update command."""
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from click.testing import CliRunner
 
 from dev_stack.cli.main import cli
-from dev_stack.manifest import create_default, write_manifest
+from dev_stack.manifest import ModuleEntry, create_default, write_manifest
 
 
 def test_update_requires_manifest() -> None:
@@ -41,7 +42,7 @@ def test_update_noop_when_versions_match() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "vcs_hooks", "speckit"])
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
         write_manifest(manifest, Path("dev-stack.toml"))
 
         result = runner.invoke(cli, ["update"])
@@ -79,3 +80,69 @@ def test_update_json_mode_skips_new_module_prompt() -> None:
 
         assert result.exit_code == 0
         assert "New modules are available" not in result.output
+
+
+# ── T024-T027: Deprecated module handling ──────────────────────────
+
+
+def test_update_deprecated_module_emits_info_and_no_error() -> None:
+    """T024: speckit in manifest → info message emitted, exit 0."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest.modules["speckit"] = ModuleEntry(version="0.1.0", installed=True)
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        result = runner.invoke(cli, ["update"])
+
+        assert result.exit_code == 0
+        assert "Module 'speckit' has been removed" in result.output
+        assert "apm" in result.output.lower()
+
+
+def test_update_deprecated_module_writes_deprecated_true() -> None:
+    """T025: speckit in manifest → deprecated = true written to TOML."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest.modules["speckit"] = ModuleEntry(version="0.1.0", installed=True)
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+
+        data = tomllib.loads(Path("dev-stack.toml").read_text(encoding="utf-8"))
+        assert data["modules"]["speckit"]["deprecated"] is True
+
+
+def test_update_deprecated_module_with_installed_false() -> None:
+    """T026: speckit with installed=false → still marks deprecated."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest.modules["speckit"] = ModuleEntry(version="0.1.0", installed=False)
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+
+        data = tomllib.loads(Path("dev-stack.toml").read_text(encoding="utf-8"))
+        assert data["modules"]["speckit"]["deprecated"] is True
+        assert "Module 'speckit' has been removed" in result.output
+
+
+def test_update_no_speckit_no_deprecation_message() -> None:
+    """T027: manifest without speckit → no deprecation message."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".git").mkdir()
+        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        write_manifest(manifest, Path("dev-stack.toml"))
+
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        assert "deprecated" not in result.output.lower()
+        assert "has been removed" not in result.output

@@ -35,6 +35,10 @@ class APMModule(ModuleBase):
         "ghcr.io/huggingface/mcp-server",
         "ghcr.io/notebooklm/mcp-server",
     )
+    DEFAULT_APM_PACKAGES: tuple[str, ...] = (
+        "msitarzewski/agency-agents#6254154",
+        "Hacklone/lazy-spec-kit#v0.9.0",
+    )
 
     def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None) -> None:
         super().__init__(repo_root, manifest)
@@ -219,27 +223,37 @@ class APMModule(ModuleBase):
         return manifest_path
 
     def _merge_manifest(self, manifest_path: Path) -> None:
-        """Additively merge default servers into an existing apm.yml."""
+        """Additively merge default servers and packages into an existing apm.yml."""
         existing_text = manifest_path.read_text(encoding="utf-8")
         existing = yaml.safe_load(existing_text) or {}
 
         deps = existing.setdefault("dependencies", {})
-        mcp_list: list[str | dict] = deps.get("mcp", [])
 
-        # Build set of existing server names for deduplication
-        existing_names: set[str] = set()
+        # Merge MCP servers
+        mcp_list: list[str | dict] = deps.get("mcp", [])
+        existing_mcp_names: set[str] = set()
         for entry in mcp_list:
             if isinstance(entry, str):
-                existing_names.add(entry)
+                existing_mcp_names.add(entry)
             elif isinstance(entry, dict) and "name" in entry:
-                existing_names.add(entry["name"])
-
-        # Add missing defaults
+                existing_mcp_names.add(entry["name"])
         for server in self.DEFAULT_SERVERS:
-            if server not in existing_names:
+            if server not in existing_mcp_names:
                 mcp_list.append(server)
-
         deps["mcp"] = mcp_list
+
+        # Merge APM packages
+        apm_list: list[str | dict] = deps.get("apm", [])
+        existing_apm_names: set[str] = set()
+        for entry in apm_list:
+            name = entry if isinstance(entry, str) else entry.get("name", "")
+            # Strip pinning suffix for deduplication (e.g., "owner/repo#tag" → "owner/repo")
+            existing_apm_names.add(name.split("#")[0])
+        for pkg in self.DEFAULT_APM_PACKAGES:
+            if pkg.split("#")[0] not in existing_apm_names:
+                apm_list.append(pkg)
+        deps["apm"] = apm_list
+
         manifest_path.write_text(
             yaml.dump(existing, default_flow_style=False, sort_keys=False),
             encoding="utf-8",

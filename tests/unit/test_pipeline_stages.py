@@ -206,25 +206,25 @@ def test_build_pipeline_stages_returns_nine_stages() -> None:
         assert stage.requires_agent == agent
 
 
-def test_security_scan_excludes_lazyspeckit() -> None:
-    """Issue 2: detect-secrets scan command must exclude .lazyspeckit/ directory."""
+def test_security_scan_does_not_exclude_lazyspeckit() -> None:
+    """After 014-apm-module-swap, .lazyspeckit/ exclude is removed from security stage."""
     from dev_stack.pipeline.stages import _execute_security_stage
 
     import inspect
     source = inspect.getsource(_execute_security_stage)
-    assert r"\.lazyspeckit/" in source, (
-        "Security stage scan_cmd must exclude .lazyspeckit/ directory"
+    assert r"\.lazyspeckit/" not in source, (
+        "Security stage scan_cmd should no longer exclude .lazyspeckit/ directory"
     )
 
 
-def test_init_baseline_excludes_lazyspeckit() -> None:
-    """Issue 2: _generate_secrets_baseline must exclude .lazyspeckit/ directory."""
+def test_init_baseline_does_not_exclude_lazyspeckit() -> None:
+    """After 014-apm-module-swap, .lazyspeckit/ exclude is removed from baseline generation."""
     from dev_stack.cli.init_cmd import _generate_secrets_baseline
 
     import inspect
     source = inspect.getsource(_generate_secrets_baseline)
-    assert r"\.lazyspeckit/" in source, (
-        "Baseline generation must exclude .lazyspeckit/ directory"
+    assert r"\.lazyspeckit/" not in source, (
+        "Baseline generation should no longer exclude .lazyspeckit/ directory"
     )
 
 

@@ -381,9 +381,9 @@ class VcsHooksModule(ModuleBase):
                 )
 
         # Check support files
-        speckit_templates_dir = self.repo_root / ".specify" / "templates"
-        if speckit_templates_dir.is_dir():
-            constitution = speckit_templates_dir / "constitution-template.md"
+        specify_templates_dir = self.repo_root / ".specify" / "templates"
+        if specify_templates_dir.is_dir():
+            constitution = specify_templates_dir / "constitution-template.md"
             if not constitution.exists():
                 issues.append(".specify/templates/constitution-template.md missing")
 
@@ -561,13 +561,13 @@ class VcsHooksModule(ModuleBase):
 
         Implements FR-017, FR-018, FR-019 (US4) and FR-009, FR-010, FR-011 (US5).
         """
-        # FR-009/FR-010: Inject baseline practices into speckit template
+        # FR-009/FR-010: Inject baseline practices into specify template
         constitution_template = TEMPLATE_DIR / "constitution-template.md"
-        speckit_templates_dir = self.repo_root / ".specify" / "templates"
-        constitution_dest = speckit_templates_dir / "constitution-template.md"
+        specify_templates_dir = self.repo_root / ".specify" / "templates"
+        constitution_dest = specify_templates_dir / "constitution-template.md"
         root_constitution = self.repo_root / "constitution-template.md"
 
-        if constitution_template.exists() and speckit_templates_dir.is_dir():
+        if constitution_template.exists() and specify_templates_dir.is_dir():
             content = constitution_template.read_text(encoding="utf-8")
 
             # FR-011: Reinit migration — move root constitution to speckit template

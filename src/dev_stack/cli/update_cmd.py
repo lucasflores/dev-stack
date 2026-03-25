@@ -16,8 +16,13 @@ from ..brownfield.conflict import (
 from ..brownfield.rollback import create_rollback_tag
 from ..errors import ManifestError
 from ..manifest import ModuleDelta, ModuleEntry, StackManifest, read_manifest, write_manifest
-from ..modules import instantiate_modules, latest_module_entries, resolve_module_names
-from ..modules import DEFAULT_GREENFIELD_MODULES
+from ..modules import (
+    DEFAULT_GREENFIELD_MODULES,
+    DEPRECATED_MODULES,
+    instantiate_modules,
+    latest_module_entries,
+    resolve_module_names,
+)
 from ..modules.base import ModuleBase
 from ._constants import MANIFEST_FILENAME
 from ._shared import (
@@ -57,8 +62,20 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
 
     requested_modules = parse_modules(modules_csv)
     if requested_modules:
+        # Filter out deprecated modules from explicit --modules flag.
+        active_requested = [m for m in requested_modules if m not in DEPRECATED_MODULES]
+        deprecated_requested = [m for m in requested_modules if m in DEPRECATED_MODULES]
+        if deprecated_requested:
+            for name in deprecated_requested:
+                msg = DEPRECATED_MODULES[name]
+                if not ctx.json_output:
+                    click.echo(f"\nℹ Module '{name}' has been removed.")
+                    click.echo(f"  {msg}")
+        if not active_requested:
+            _emit_noop(ctx)
+            return
         try:
-            module_names = resolve_module_names(requested_modules, include_defaults=False)
+            module_names = resolve_module_names(active_requested, include_defaults=False)
         except KeyError as exc:
             emit_manifest_error(ctx, str(exc), exit_code=ExitCode.GENERAL_ERROR)
     else:
@@ -76,12 +93,18 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
         if opted_in:
             module_names = resolve_module_names(module_names + opted_in, include_defaults=False)
 
+    # Handle deprecated modules: emit info, mark in TOML, filter out.
+    deprecated_found = _handle_deprecated_modules(manifest, module_names, ctx)
+    module_names = [n for n in module_names if n not in DEPRECATED_MODULES]
+
     latest_entries = latest_module_entries(module_names or None)
     delta = manifest.diff_modules(latest_entries, module_names or None)
     targets = set(delta.added + delta.updated)
     modules_to_apply = [name for name in module_names if name in targets]
 
     if not modules_to_apply:
+        if deprecated_found:
+            write_manifest(manifest, manifest_path)
         _emit_noop(ctx)
         return
 
@@ -264,3 +287,32 @@ def _prompt_new_modules(manifest: StackManifest, ctx: CLIContext) -> list[str]:
     else:
         click.echo("  → No new modules selected.")
     return opted_in
+
+
+def _handle_deprecated_modules(
+    manifest: StackManifest,
+    module_names: list[str],
+    ctx: CLIContext,
+) -> list[str]:
+    """Detect deprecated modules, emit info, mark them in the manifest.
+
+    Returns list of deprecated module names found.
+    """
+    found: list[str] = []
+    for name in module_names:
+        message = DEPRECATED_MODULES.get(name)
+        if message is None:
+            continue
+        found.append(name)
+        entry = manifest.modules.get(name)
+        if entry is not None:
+            entry.deprecated = True
+        if ctx.json_output:
+            continue
+        click.echo(f"\nℹ Module '{name}' has been removed.")
+        for line in message.split(". "):
+            line = line.strip().rstrip(".")
+            if line:
+                click.echo(f"  {line}.")
+        click.echo(f"  Marking [modules.{name}] as deprecated in dev-stack.toml.")
+    return found

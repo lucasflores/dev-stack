@@ -1,11 +1,14 @@
 """Integration tests for dev-stack init."""
 from __future__ import annotations
 
+import shutil
 import stat
 import subprocess
+import time
 import tomllib
 from pathlib import Path
 
+import yaml
 from click.testing import CliRunner
 
 from dev_stack.cli.main import cli
@@ -22,6 +25,9 @@ def test_greenfield_init_creates_expected_files() -> None:
         manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
         assert manifest["stack"]["version"] == "0.1.0"
         assert manifest["modules"]["hooks"]["installed"] is True
+
+        # T021: Fresh init must NOT contain [modules.speckit]
+        assert "speckit" not in manifest["modules"]
 
         # UV project artifacts
         assert manifest["modules"]["uv_project"]["installed"] is True
@@ -92,3 +98,40 @@ def test_greenfield_predecessor_creates_tests_and_deps() -> None:
         assert "ruff" in tool
         assert "pytest" in tool
         assert "mypy" in tool
+
+
+def test_greenfield_init_produces_apm_yml_with_all_sections() -> None:
+    """T020: Fresh init produces apm.yml with dependencies.mcp and dependencies.apm."""
+    from dev_stack.modules.apm import APMModule
+
+    runner = CliRunner()
+    start = time.monotonic()
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["init"])
+        elapsed = time.monotonic() - start
+        assert result.exit_code == 0, result.output
+        assert elapsed < 60, f"SC-001: init took {elapsed:.1f}s (>60s)"
+
+        manifest = tomllib.loads(Path("dev-stack.toml").read_text(encoding="utf-8"))
+        assert "apm" in manifest["modules"], "APM module must be in manifest"
+        assert "speckit" not in manifest["modules"], "speckit must not appear"
+
+        # Verify no speckit template directories were created
+        assert not Path(".specify/templates/speckit").exists()
+        assert not Path(".lazyspeckit").exists()
+
+        apm_yml = Path("apm.yml")
+        if apm_yml.exists():
+            # apm CLI is available — verify generated file content
+            data = yaml.safe_load(apm_yml.read_text(encoding="utf-8"))
+            assert "mcp" in data.get("dependencies", {}), "apm.yml missing dependencies.mcp"
+            assert "apm" in data.get("dependencies", {}), "apm.yml missing dependencies.apm"
+        else:
+            # apm CLI not available — verify template content via module API
+            module = APMModule(Path.cwd())
+            files = module.preview_files()
+            template_content = list(files.values())[0]
+            data = yaml.safe_load(template_content)
+            assert "mcp" in data.get("dependencies", {}), "template missing dependencies.mcp"
+            assert "apm" in data.get("dependencies", {}), "template missing dependencies.apm"
+            assert len(data["dependencies"]["apm"]) >= 2, "template must include agent packages"

@@ -51,6 +51,7 @@ The CLI mirrors the artifacts inside [specs/001-dev-stack-ecosystem](specs/001-d
 | git 2.30+ | Hooks, rollback, conflict detection | **Yes** |
 | Coding agent CLI | Powers docs, commit-message, and visualize stages (auto-detects `claude`, `gh copilot`, or `cursor`) | **Yes** |
 | [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) | Architecture diagram generation — gracefully skipped when absent | Optional |
+| [specify-cli](https://github.com/Hacklone/lazy-spec-kit) | `specify init --here --ai copilot` scaffolds the `.specify/` directory | Optional |
 | mypy | Type checking in the `typecheck` pipeline stage — skipped when absent | Optional |
 | sphinx + sphinx-rtd-theme | API docs in the `docs-api` pipeline stage — skipped when absent | Optional |
 | [git-cliff](https://git-cliff.org/) | Changelog generation via `dev-stack changelog` — warns when absent | Optional |
@@ -102,11 +103,17 @@ uv init --package   # creates pyproject.toml, src/ layout, tests/
 dev-stack --json init
 git add -A && git commit -m "chore: initial dev-stack setup"
 
+# (Optional) Scaffold the .specify/ directory for spec-driven workflows
+uv tool install specify-cli   # one-time install
+specify init --here --ai copilot
+git add -A && git commit -m "chore: add specify scaffold"
+
 # Brownfield — augment an existing repo (safe conflict detection)
 dev-stack --dry-run --json init   # preview what will change
 dev-stack --json init             # apply
 ```
 
+- The `specify init` step is separate from `dev-stack init` because spec tooling is now managed via the APM module rather than a built-in speckit module.
 - The first commit after `dev-stack init` passes all pre-commit hooks automatically — no `--no-verify` needed.
 - Set `DEV_STACK_AGENT=none` to skip agent detection entirely, or `DEV_STACK_AGENT=<cli>` to override auto-detection (`claude` → `gh copilot` → `cursor`).
 - Pass `--modules hooks,visualization` (or any subset) to control which modules are installed.
@@ -120,7 +127,7 @@ dev-stack --json init             # apply
 | `scripts/hooks/pre-commit` | Shell entry point for git pre-commit | hooks |
 | `.git/hooks/commit-msg` | Conventional-commit linting via gitlint + custom rules | vcs_hooks |
 | `.git/hooks/pre-push` | Branch naming + signing enforcement | vcs_hooks |
-| `.specify/` | GitHub Spec Kit scaffold — constitution, memory, templates, scripts | speckit |
+| `.specify/` | Spec-driven workflow scaffold — constitution, memory, templates, scripts (created by `specify init`) | apm |
 | `.dev-stack/instructions.md` | Agent instructions injected into detected agent config | vcs_hooks |
 | `.specify/templates/constitution-template.md` | Baseline practices injected into speckit constitution template | vcs_hooks |
 | `cliff.toml` | git-cliff configuration for changelog generation | vcs_hooks |
@@ -131,7 +138,7 @@ dev-stack --json init             # apply
 | `.dev-stack/` | Internal state — `pipeline/` and `viz/` are gitignored; `instructions.md` and `hooks-manifest.json` are tracked | core |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment | docker |
 
-Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `speckit`, `vcs_hooks`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
+Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `apm`, `vcs_hooks`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
 
 > **Edge case — existing repo, no conflicts:** If a repo already has commits and content but none of its files overlap with dev-stack's proposed assets, init treats it as greenfield. This is safe because greenfield mode only *adds* new files — it never modifies or deletes existing content.
 

@@ -300,6 +300,104 @@ class TestAudit:
             apm.audit(fmt="json")
             mock_run.assert_called_once_with(["audit", "-f", "json"])
 
+
+# ── Expanded apm.yml template (014-apm-module-swap) ─────────────────
+
+
+class TestExpandedTemplate:
+    """T018: Verify expanded template contains both dependencies.mcp and dependencies.apm."""
+
+    def test_template_contains_mcp_and_apm_sections(self, apm: APMModule) -> None:
+        manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
+        content = yaml.safe_load(manifest_path.read_text())
+        assert "dependencies" in content
+        assert "mcp" in content["dependencies"]
+        assert "apm" in content["dependencies"]
+
+    def test_template_preserves_all_five_mcp_servers(self, apm: APMModule) -> None:
+        """FR-007 regression guard: all 5 original MCP servers must be present."""
+        manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
+        content = yaml.safe_load(manifest_path.read_text())
+        mcp_list = content["dependencies"]["mcp"]
+        assert len(mcp_list) == 5
+        for server in APMModule.DEFAULT_SERVERS:
+            assert server in mcp_list
+
+    def test_template_contains_agency_agents_and_lazyspeckit(self, apm: APMModule) -> None:
+        manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
+        content = yaml.safe_load(manifest_path.read_text())
+        apm_list = content["dependencies"]["apm"]
+        assert len(apm_list) == 2
+        apm_names = [entry.split("#")[0] for entry in apm_list]
+        assert "msitarzewski/agency-agents" in apm_names
+        assert "Hacklone/lazy-spec-kit" in apm_names
+
+    def test_template_apm_packages_are_pinned(self, apm: APMModule) -> None:
+        manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
+        content = yaml.safe_load(manifest_path.read_text())
+        for entry in content["dependencies"]["apm"]:
+            assert "#" in entry, f"APM package '{entry}' is not pinned to a ref"
+
+
+# ── Merge manifest with dependencies.apm (014-apm-module-swap) ──────
+
+
+class TestMergeManifestApm:
+    """T019: Verify _merge_manifest() handles dependencies.apm without duplicates."""
+
+    def test_merge_adds_apm_section_to_existing_manifest(self, apm: APMModule) -> None:
+        existing = apm.repo_root / MANIFEST_FILE
+        existing.write_text(yaml.dump({
+            "name": "myproject",
+            "version": "1.0.0",
+            "dependencies": {
+                "mcp": ["ghcr.io/github/github-mcp-server"],
+            }
+        }))
+        apm._merge_manifest(existing)
+        content = yaml.safe_load(existing.read_text())
+        assert "apm" in content["dependencies"]
+        assert len(content["dependencies"]["apm"]) == 2
+
+    def test_merge_does_not_duplicate_existing_apm_packages(self, apm: APMModule) -> None:
+        existing = apm.repo_root / MANIFEST_FILE
+        existing.write_text(yaml.dump({
+            "name": "myproject",
+            "version": "1.0.0",
+            "dependencies": {
+                "mcp": [],
+                "apm": ["msitarzewski/agency-agents#older-ref"],
+            }
+        }))
+        apm._merge_manifest(existing)
+        content = yaml.safe_load(existing.read_text())
+        apm_list = content["dependencies"]["apm"]
+        # Should have the original entry + lazy-spec-kit (agency-agents not duplicated)
+        agency_entries = [e for e in apm_list if "agency-agents" in e]
+        assert len(agency_entries) == 1
+        assert len(apm_list) == 2
+
+    def test_merge_preserves_custom_apm_packages(self, apm: APMModule) -> None:
+        existing = apm.repo_root / MANIFEST_FILE
+        existing.write_text(yaml.dump({
+            "name": "myproject",
+            "version": "1.0.0",
+            "dependencies": {
+                "mcp": [],
+                "apm": ["custom/my-package#v1.0"],
+            }
+        }))
+        apm._merge_manifest(existing)
+        content = yaml.safe_load(existing.read_text())
+        apm_list = content["dependencies"]["apm"]
+        assert "custom/my-package#v1.0" in apm_list
+        assert len(apm_list) == 3  # custom + agency-agents + lazy-spec-kit
+
+
+# ── audit (continued) ───────────────────────────────────────────────
+
+
+class TestAuditContinued:
     def test_audit_passes_output_file(self, apm: APMModule, tmp_path: Path) -> None:
         output = tmp_path / "report.sarif"
         with patch.object(apm, "_check_apm_cli", return_value=(True, "APM CLI v0.9.0")), \

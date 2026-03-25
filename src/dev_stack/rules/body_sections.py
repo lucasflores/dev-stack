@@ -2,12 +2,30 @@
 
 Requires ## Intent, ## Reasoning, ## Scope, ## Narrative headings
 on commits that have an Agent: trailer. Human commits are not checked.
+
+NOTE: _parse_trailers is inlined here (not imported from trailers.py) because
+gitlint's extra_path mechanism loads each .py file as a standalone module.
+Relative imports fail with "attempted relative import with no known parent
+package". This duplication matches the pattern used by pipeline_warn.py.
 """
 from __future__ import annotations
 
 from gitlint.rules import CommitRule, RuleViolation
 
-from .trailers import _parse_trailers
+
+def _parse_trailers(body_lines: list[str]) -> dict[str, str]:
+    """Parse git-trailer-style key: value pairs from body lines."""
+    trailers: dict[str, str] = {}
+    for line in reversed(body_lines):
+        stripped = line.strip()
+        if not stripped:
+            break
+        if ": " in stripped:
+            key, _, value = stripped.partition(": ")
+            trailers[key.strip()] = value.strip()
+        else:
+            break
+    return trailers
 
 
 class BodySectionRule(CommitRule):

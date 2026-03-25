@@ -40,8 +40,8 @@ class APMModule(ModuleBase):
         "Hacklone/lazy-spec-kit#v0.9.0",
     )
 
-    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None) -> None:
-        super().__init__(repo_root, manifest)
+    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(repo_root, manifest, **kwargs)
 
     # ── Public API (ModuleBase) ──────────────────────────────────────
 
@@ -120,7 +120,15 @@ class APMModule(ModuleBase):
         )
 
     def preview_files(self) -> dict[Path, str]:
-        """Return the default apm.yml template content."""
+        """Return the default apm.yml template content.
+
+        Returns an empty dict when the APM CLI is unavailable, since
+        install() will early-return without writing any files in that case.
+        This prevents false conflict reports for apm.yml.
+        """
+        ok, _ = self._check_apm_cli()
+        if not ok:
+            return {}
         project_name = self.repo_root.name
         content = self._render_template(project_name)
         return {Path(MANIFEST_FILE): content}

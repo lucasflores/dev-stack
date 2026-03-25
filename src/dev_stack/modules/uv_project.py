@@ -211,8 +211,6 @@ _STANDARD_GITIGNORE_ENTRIES = [
     ".ruff_cache/",
     ".pytest_cache/",
     ".venv/",
-    ".dev-stack/pipeline/",
-    ".dev-stack/viz/",
     ".codeboarding/cache/",
     ".codeboarding/logs/",
     "dist/",

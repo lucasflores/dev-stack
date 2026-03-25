@@ -17,6 +17,8 @@ from dev_stack.cli.main import cli
 def test_greenfield_init_creates_expected_files() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
+        # Simulate a Python project so stack profile includes Python modules
+        Path("setup.py").write_text("# placeholder")
         result = runner.invoke(cli, ["init"])
         assert result.exit_code == 0, result.output
 
@@ -107,6 +109,8 @@ def test_greenfield_init_produces_apm_yml_with_all_sections() -> None:
     runner = CliRunner()
     start = time.monotonic()
     with runner.isolated_filesystem():
+        # Simulate a Python project so stack profile includes Python modules
+        Path("setup.py").write_text("# placeholder")
         result = runner.invoke(cli, ["init"])
         elapsed = time.monotonic() - start
         assert result.exit_code == 0, result.output
@@ -127,11 +131,12 @@ def test_greenfield_init_produces_apm_yml_with_all_sections() -> None:
             assert "mcp" in data.get("dependencies", {}), "apm.yml missing dependencies.mcp"
             assert "apm" in data.get("dependencies", {}), "apm.yml missing dependencies.apm"
         else:
-            # apm CLI not available — verify template content via module API
+            # apm CLI not available — preview_files returns {} per fix #4
             module = APMModule(Path.cwd())
             files = module.preview_files()
-            template_content = list(files.values())[0]
-            data = yaml.safe_load(template_content)
-            assert "mcp" in data.get("dependencies", {}), "template missing dependencies.mcp"
-            assert "apm" in data.get("dependencies", {}), "template missing dependencies.apm"
-            assert len(data["dependencies"]["apm"]) >= 2, "template must include agent packages"
+            if files:
+                template_content = list(files.values())[0]
+                data = yaml.safe_load(template_content)
+                assert "mcp" in data.get("dependencies", {}), "template missing dependencies.mcp"
+                assert "apm" in data.get("dependencies", {}), "template missing dependencies.apm"
+                assert len(data["dependencies"]["apm"]) >= 2, "template must include agent packages"

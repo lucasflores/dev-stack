@@ -15,6 +15,8 @@ from dev_stack.modules.hooks import HooksModule
 def test_update_reinstalls_modules_and_refreshes_manifest() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
+        # Simulate a Python project so stack profile includes Python modules
+        Path("setup.py").write_text("# placeholder")
         init_result = runner.invoke(cli, ["init"])
         assert init_result.exit_code == 0, init_result.output
 
@@ -46,6 +48,8 @@ def test_update_handles_downstream_speckit_manifest() -> None:
     """T028/FR-009: downstream manifest with [modules.speckit] updates cleanly."""
     runner = CliRunner()
     with runner.isolated_filesystem():
+        # Simulate a Python project so stack profile includes Python modules
+        Path("setup.py").write_text("# placeholder")
         # Bootstrap a working project first.
         init_result = runner.invoke(cli, ["init"])
         assert init_result.exit_code == 0, init_result.output

@@ -44,6 +44,8 @@ def run_commit_msg_hook(msg_file_path: str) -> int:
     Returns:
         Exit code: 0 for success, 1 for rejection.
     """
+    if os.environ.get("DEV_STACK_NO_HOOKS") == "1":
+        return 0
     try:
         msg_path = Path(msg_file_path)
         if not msg_path.exists():
@@ -125,6 +127,9 @@ def run_prepare_commit_msg_hook(
         - Stage 9 failure -> ``0`` (fallback to editor)
         - Message-file write errors -> ``0`` (allow editor fallback)
     """
+    if os.environ.get("DEV_STACK_NO_HOOKS") == "1":
+        return 0
+
     # Normalize empty string to None
     if source is not None and not source.strip():
         source = None
@@ -237,6 +242,9 @@ def run_pre_push_hook(stdin: IO[str]) -> int:
     Returns:
         Exit code: 0 for success, 1 for rejection.
     """
+    if os.environ.get("DEV_STACK_NO_HOOKS") == "1":
+        return 0
+
     import subprocess
 
     try:
@@ -335,6 +343,9 @@ def run_pre_commit_hook() -> int:
     Returns:
         Exit code: 0 for success, 1 for rejection.
     """
+    if os.environ.get("DEV_STACK_NO_HOOKS") == "1":
+        return 0
+
     try:
         repo_root = _get_repo_root()
         if repo_root is None:

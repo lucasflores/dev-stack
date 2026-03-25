@@ -382,6 +382,15 @@ def _execute_typecheck_stage(context: StageContext) -> StageResult:
             duration_ms=_elapsed_ms(start),
             skipped_reason="mypy not installed in project venv — run 'uv sync --extra dev --extra docs' to install",
         )
+    src_dir = context.repo_root / "src"
+    if not src_dir.exists():
+        return StageResult(
+            stage_name="typecheck",
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=_elapsed_ms(start),
+            skipped_reason="src/ directory not found",
+        )
     success, output = _run_command(
         ("python3", "-m", "mypy", "src/"),
         context.repo_root,
@@ -623,10 +632,6 @@ def _execute_infra_sync_stage(context: StageContext) -> StageResult:
         (
             PACKAGE_ROOT / "templates" / "hooks" / "pre-commit",
             context.repo_root / "scripts" / "hooks" / "pre-commit",
-        ),
-        (
-            PACKAGE_ROOT / "templates" / "hooks" / "pre-commit-config.yaml",
-            context.repo_root / ".pre-commit-config.yaml",
         ),
     ]
     drift: list[str] = []

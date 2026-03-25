@@ -259,3 +259,26 @@ class TestRemediationHints:
         result = _execute_docs_api_stage(context)
         assert result.status == StageStatus.SKIP
         assert REMEDIATION_SUFFIX in result.skipped_reason
+
+
+def test_typecheck_skip_when_src_missing(monkeypatch, repo_root: Path) -> None:
+    """Typecheck stage skips gracefully when src/ directory does not exist."""
+    monkeypatch.setattr(
+        "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+    )
+    context = StageContext(repo_root=repo_root)
+    result = _execute_typecheck_stage(context)
+    assert result.status == StageStatus.SKIP
+    assert result.skipped_reason == "src/ directory not found"
+
+
+def test_infra_sync_ignores_pre_commit_config_yaml(repo_root: Path) -> None:
+    """Infra-sync no longer compares .pre-commit-config.yaml against deprecated template."""
+    cfg_path = repo_root / ".pre-commit-config.yaml"
+    cfg_path.write_text("custom config", encoding="utf-8")
+    context = StageContext(repo_root=repo_root)
+
+    result = _execute_infra_sync_stage(context)
+
+    assert result.status == StageStatus.PASS
+    assert ".pre-commit-config.yaml" not in (result.output or "")

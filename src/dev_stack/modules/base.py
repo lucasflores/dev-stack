@@ -4,9 +4,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 from ..brownfield import markers
+
+if TYPE_CHECKING:
+    from ..config import StackProfile
 
 
 @dataclass(slots=True)
@@ -37,9 +40,16 @@ class ModuleBase(ABC):
     DEPENDS_ON: Sequence[str] = ()
     MANAGED_FILES: Sequence[str] = ()
 
-    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        repo_root: Path,
+        manifest: dict[str, Any] | None = None,
+        *,
+        stack_profile: StackProfile | None = None,
+    ) -> None:
         self.repo_root = Path(repo_root)
         self.manifest = manifest or {}
+        self.stack_profile = stack_profile
 
     @abstractmethod
     def install(self, *, force: bool = False) -> ModuleResult:  # pragma: no cover - abstract

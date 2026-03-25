@@ -47,8 +47,8 @@ class MCPServersModule(ModuleBase):
     VERSION = "0.1.0"
     MANAGED_FILES = (".claude/settings.local.json", ".github/copilot-mcp.json")
 
-    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None) -> None:
-        super().__init__(repo_root, manifest)
+    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        super().__init__(repo_root, manifest, **kwargs)
         self._stack_manifest = StackManifest.from_dict(manifest) if manifest else None
         self._manifest_data = self._load_template_manifest()
         self._server_lookup = {

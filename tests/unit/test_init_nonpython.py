@@ -67,7 +67,7 @@ def test_generate_secrets_baseline_function_still_exists() -> None:
 
 
 def test_gitignore_managed_section_contains_dev_stack_dir(tmp_path) -> None:
-    """T030: After _ensure_gitignore_managed_section, .gitignore has DEV-STACK:BEGIN:GITIGNORE and .dev-stack/."""
+    """T030: After _ensure_gitignore_managed_section, .gitignore has specific .dev-stack/ paths and negation patterns."""
     from dev_stack.cli.init_cmd import _ensure_gitignore_managed_section
 
     _ensure_gitignore_managed_section(tmp_path)
@@ -75,7 +75,12 @@ def test_gitignore_managed_section_contains_dev_stack_dir(tmp_path) -> None:
     gitignore = (tmp_path / ".gitignore").read_text()
     assert "DEV-STACK:BEGIN:GITIGNORE" in gitignore
     assert "DEV-STACK:END:GITIGNORE" in gitignore
-    assert ".dev-stack/" in gitignore
+    assert ".dev-stack/pipeline/" in gitignore
+    assert ".dev-stack/viz/" in gitignore
+    assert ".dev-stack/pipeline-skipped" in gitignore
+    # Tracked files must be negated so git sees them
+    assert "!.dev-stack/hooks-manifest.json" in gitignore
+    assert "!.dev-stack/instructions.md" in gitignore
 
 
 def test_gitignore_created_when_missing(tmp_path) -> None:
@@ -88,7 +93,7 @@ def test_gitignore_created_when_missing(tmp_path) -> None:
 
     assert (tmp_path / ".gitignore").exists()
     content = (tmp_path / ".gitignore").read_text()
-    assert ".dev-stack/" in content
+    assert ".dev-stack/pipeline/" in content
 
 
 def test_gitignore_preserves_existing_content(tmp_path) -> None:
@@ -103,7 +108,7 @@ def test_gitignore_preserves_existing_content(tmp_path) -> None:
     content = gitignore.read_text()
     assert "node_modules/" in content
     assert "*.log" in content
-    assert ".dev-stack/" in content
+    assert ".dev-stack/pipeline/" in content
     assert "DEV-STACK:BEGIN:GITIGNORE" in content
 
 
@@ -146,7 +151,8 @@ def test_full_nonpython_init_produces_clean_config(tmp_path: Path) -> None:
     # Gitignore: managed section
     _ensure_gitignore_managed_section(tmp_path)
     gitignore = (tmp_path / ".gitignore").read_text()
-    assert ".dev-stack/" in gitignore
+    assert ".dev-stack/pipeline/" in gitignore
+    assert "!.dev-stack/hooks-manifest.json" in gitignore
 
     # Manifest: no absolute paths
     manifest = create_default(["hooks", "apm", "vcs_hooks"])
@@ -191,3 +197,59 @@ def test_polyglot_repo_python_hooks_but_no_uv_sync() -> None:
             assert "uv_project" in context
             return
     pytest.fail("No uv sync call found")
+
+
+# --- Fix #5/#6: Stack-aware default module filtering ---
+
+
+def test_resolve_defaults_excludes_python_modules_for_nonpython(tmp_path: Path) -> None:
+    """Non-Python repo: resolve_module_names(include_defaults=True) excludes uv_project and sphinx_docs."""
+    from dev_stack.config import StackProfile
+    from dev_stack.modules import PYTHON_ONLY_MODULES, resolve_module_names
+
+    profile = StackProfile(has_python=False)
+    resolved = resolve_module_names(include_defaults=True, stack_profile=profile)
+
+    for name in PYTHON_ONLY_MODULES:
+        assert name not in resolved, f"{name} should be excluded for non-Python repos"
+    # Language-agnostic modules remain
+    assert "hooks" in resolved
+    assert "apm" in resolved
+    assert "vcs_hooks" in resolved
+
+
+def test_resolve_defaults_includes_python_modules_for_python(tmp_path: Path) -> None:
+    """Python repo: resolve_module_names(include_defaults=True) includes all defaults."""
+    from dev_stack.config import StackProfile
+    from dev_stack.modules import DEFAULT_GREENFIELD_MODULES, resolve_module_names
+
+    profile = StackProfile(has_python=True)
+    resolved = resolve_module_names(include_defaults=True, stack_profile=profile)
+
+    for name in DEFAULT_GREENFIELD_MODULES:
+        assert name in resolved
+
+
+def test_hooks_module_uses_precomputed_profile(tmp_path: Path) -> None:
+    """HooksModule.install() uses a pre-computed profile instead of re-detecting."""
+    from dev_stack.config import StackProfile
+    from dev_stack.modules.hooks import HooksModule, _build_hook_list
+
+    repo = tmp_path / "repo"
+    (repo / ".git" / "hooks").mkdir(parents=True)
+    # Create a .py file that would make detect_stack_profile return has_python=True
+    (repo / "src" / "pkg").mkdir(parents=True)
+    (repo / "src" / "pkg" / "__init__.py").write_text("")
+
+    # But pass a profile that says non-Python — the module should trust it
+    profile = StackProfile(has_python=False)
+    module = HooksModule(repo, stack_profile=profile)
+
+    result = module.install()
+    assert result.success
+
+    config = (repo / ".pre-commit-config.yaml").read_text()
+    assert "ruff" not in config
+    assert "pytest" not in config
+    assert "mypy" not in config
+    assert "dev-stack-pipeline" in config

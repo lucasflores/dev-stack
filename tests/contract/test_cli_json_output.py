@@ -13,6 +13,8 @@ from dev_stack.cli.main import cli
 def test_init_json_contract() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
+        # Simulate a Python project so stack profile includes Python modules
+        Path("setup.py").write_text("# placeholder")
         result = runner.invoke(cli, ["--json", "init"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
@@ -63,6 +65,8 @@ def test_mcp_verify_json_contract() -> None:
 def test_status_json_contract() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
+        # Simulate a Python project so stack profile includes Python modules
+        Path("setup.py").write_text("# placeholder")
         init_result = runner.invoke(cli, ["init"])
         assert init_result.exit_code == 0, init_result.output
         result = runner.invoke(cli, ["--json", "status"])

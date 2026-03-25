@@ -91,7 +91,7 @@ class HooksModule(ModuleBase):
         self._copy_with_permission(script_template, script_dest, 0o755, force, created, modified)
 
         # Programmatic generation of .pre-commit-config.yaml via managed section
-        profile = detect_stack_profile(self.repo_root)
+        profile = self.stack_profile or detect_stack_profile(self.repo_root)
         hooks = _build_hook_list(profile)
         rendered = _render_pre_commit_config(hooks)
         config_dest = self.repo_root / ".pre-commit-config.yaml"
@@ -180,7 +180,7 @@ class HooksModule(ModuleBase):
 
     def preview_files(self) -> dict[Path, str]:
         script_template = (TEMPLATE_DIR / "pre-commit").read_text(encoding="utf-8")
-        profile = detect_stack_profile(self.repo_root)
+        profile = self.stack_profile or detect_stack_profile(self.repo_root)
         hooks = _build_hook_list(profile)
         config_content = _render_pre_commit_config(hooks)
         return {

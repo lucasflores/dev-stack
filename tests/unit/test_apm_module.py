@@ -328,7 +328,10 @@ class TestExpandedTemplate:
         content = yaml.safe_load(manifest_path.read_text())
         apm_list = content["dependencies"]["apm"]
         assert len(apm_list) == 1
-        assert "lucasflores/agent-skills" in apm_list
+        # Entry is pinned to a specific SHA; check base package name only.
+        assert any(
+            entry.split("#")[0] == "lucasflores/agent-skills" for entry in apm_list
+        )
 
     def test_template_apm_packages_format(self, apm: APMModule) -> None:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")

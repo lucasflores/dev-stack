@@ -37,8 +37,8 @@ class APMModule(ModuleBase):
         "lucasflores/agent-skills",
     )
 
-    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        super().__init__(repo_root, manifest, **kwargs)
+    def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None) -> None:
+        super().__init__(repo_root, manifest)
 
     # ── Public API (ModuleBase) ──────────────────────────────────────
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from ..errors import ManifestError
 from ..manifest import StackManifest, read_manifest
 from ..modules.apm import APMModule
 from .main import CLIContext, ExitCode, cli
@@ -96,5 +97,6 @@ def _load_manifest(repo_root: Path) -> StackManifest | None:
         return None
     try:
         return read_manifest(manifest_path)
-    except Exception:
-        return None
+    except (ManifestError, OSError) as exc:
+        click.echo(f"Error: Unable to read {MANIFEST_FILENAME}: {exc}", err=True)
+        raise SystemExit(ExitCode.GENERAL_ERROR) from exc

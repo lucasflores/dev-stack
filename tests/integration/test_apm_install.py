@@ -27,7 +27,7 @@ class TestCommunityPackages:
             "version": "1.0.0",
             "dependencies": {
                 "mcp": [
-                    "ghcr.io/upstash/context7-mcp-server",
+                    "io.github.upstash/context7",
                     "ghcr.io/community/custom-mcp-server",
                 ]
             }
@@ -87,8 +87,8 @@ class TestCommunityPackages:
             apm._bootstrap_manifest(force=False, strategy="merge")
             content = yaml.safe_load(manifest.read_text())
             mcp_list = content["dependencies"]["mcp"]
-            # Community + 5 defaults = 6
-            assert len(mcp_list) == 6
+            # Community + 3 defaults = 4
+            assert len(mcp_list) == 4
             assert "ghcr.io/community/my-mcp-server" in mcp_list
 
 

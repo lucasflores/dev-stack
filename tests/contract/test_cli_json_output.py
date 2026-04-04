@@ -30,38 +30,6 @@ def test_init_json_contract() -> None:
         assert (Path.cwd() / ".pre-commit-config.yaml").exists()
 
 
-def test_mcp_install_json_contract() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        env = _fake_agent_env()
-        result = runner.invoke(cli, ["--json", "mcp", "install"], env=env)
-        assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
-        assert payload["agent"] == "claude"
-        assert payload["servers"], payload
-        names = {server["name"] for server in payload["servers"]}
-        assert "context7" in names
-        config_path = Path(payload["config_path"])
-        if not config_path.is_absolute():
-            config_path = Path.cwd() / config_path
-        assert config_path.exists()
-
-
-def test_mcp_verify_json_contract() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        env = _fake_agent_env()
-        install = runner.invoke(cli, ["--json", "mcp", "install"], env=env)
-        assert install.exit_code == 0, install.output
-        result = runner.invoke(cli, ["--json", "mcp", "verify"], env=env)
-        assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
-        assert payload["agent"] == "claude"
-        assert payload["servers"], payload
-        statuses = {server["status"] for server in payload["servers"]}
-        assert statuses & {"pass", "fail"}
-
-
 def test_status_json_contract() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():

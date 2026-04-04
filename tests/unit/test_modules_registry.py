@@ -80,7 +80,7 @@ def test_cyclical_dependency_detection(registry) -> None:
 
 
 def test_default_greenfield_modules_include_new_modules() -> None:
-    assert modules.DEFAULT_GREENFIELD_MODULES == ("uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks")
+    assert modules.DEFAULT_GREENFIELD_MODULES == ("uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks", "ci-workflows", "docker", "visualization")
 
 
 def test_resolve_default_modules_respect_dependency_order() -> None:
@@ -88,7 +88,7 @@ def test_resolve_default_modules_respect_dependency_order() -> None:
     # uv_project must come before sphinx_docs (dependency)
     assert resolved.index("uv_project") < resolved.index("sphinx_docs")
     # All defaults present
-    for name in ("uv_project", "sphinx_docs", "hooks", "apm"):
+    for name in ("uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks", "ci-workflows", "docker", "visualization"):
         assert name in resolved
     # speckit is no longer a default
     assert "speckit" not in resolved

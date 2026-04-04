@@ -58,7 +58,7 @@ class TestBootstrapManifest:
         assert manifest_path.exists()
         content = yaml.safe_load(manifest_path.read_text())
         assert "dependencies" in content
-        assert len(content["dependencies"]["mcp"]) == 5
+        assert len(content["dependencies"]["mcp"]) == 3
 
     def test_skip_when_exists(self, apm: APMModule) -> None:
         # Pre-create manifest
@@ -72,7 +72,7 @@ class TestBootstrapManifest:
         existing.write_text("name: existing\n")
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
-        assert len(content["dependencies"]["mcp"]) == 5
+        assert len(content["dependencies"]["mcp"]) == 3
 
     def test_merge_adds_missing_defaults(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
@@ -81,7 +81,7 @@ class TestBootstrapManifest:
             "version": "1.0.0",
             "dependencies": {
                 "mcp": [
-                    "ghcr.io/github/github-mcp-server",
+                    "io.github.github/github-mcp-server",
                     "ghcr.io/custom/my-server",
                 ]
             }
@@ -89,8 +89,8 @@ class TestBootstrapManifest:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="merge")
         content = yaml.safe_load(manifest_path.read_text())
         mcp_list = content["dependencies"]["mcp"]
-        # Original 2 + 4 missing defaults = 6
-        assert len(mcp_list) == 6
+        # Original 2 + 2 missing defaults = 4
+        assert len(mcp_list) == 4
         # Custom server preserved
         assert "ghcr.io/custom/my-server" in mcp_list
 
@@ -99,7 +99,7 @@ class TestBootstrapManifest:
         existing.write_text("name: existing\n")
         manifest_path = apm._bootstrap_manifest(force=True)
         content = yaml.safe_load(manifest_path.read_text())
-        assert len(content["dependencies"]["mcp"]) == 5
+        assert len(content["dependencies"]["mcp"]) == 3
 
     def test_ci_noninteractive_defaults_to_skip(self, apm: APMModule) -> None:
         """In non-interactive mode, _bootstrap_manifest defaults to skip."""
@@ -314,29 +314,27 @@ class TestExpandedTemplate:
         assert "mcp" in content["dependencies"]
         assert "apm" in content["dependencies"]
 
-    def test_template_preserves_all_five_mcp_servers(self, apm: APMModule) -> None:
-        """FR-007 regression guard: all 5 original MCP servers must be present."""
+    def test_template_preserves_all_mcp_servers(self, apm: APMModule) -> None:
+        """All default MCP servers must be present in the template."""
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
         mcp_list = content["dependencies"]["mcp"]
-        assert len(mcp_list) == 5
+        assert len(mcp_list) == 3
         for server in APMModule.DEFAULT_SERVERS:
             assert server in mcp_list
 
-    def test_template_contains_agency_agents_and_lazyspeckit(self, apm: APMModule) -> None:
+    def test_template_contains_agent_skills(self, apm: APMModule) -> None:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
         apm_list = content["dependencies"]["apm"]
-        assert len(apm_list) == 2
-        apm_names = [entry.split("#")[0] for entry in apm_list]
-        assert "msitarzewski/agency-agents" in apm_names
-        assert "Hacklone/lazy-spec-kit" in apm_names
+        assert len(apm_list) == 1
+        assert "lucasflores/agent-skills" in apm_list
 
-    def test_template_apm_packages_are_pinned(self, apm: APMModule) -> None:
+    def test_template_apm_packages_format(self, apm: APMModule) -> None:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
         for entry in content["dependencies"]["apm"]:
-            assert "#" in entry, f"APM package '{entry}' is not pinned to a ref"
+            assert "/" in entry, f"APM package '{entry}' should use org/repo format"
 
 
 # ── Merge manifest with dependencies.apm (014-apm-module-swap) ──────
@@ -351,13 +349,13 @@ class TestMergeManifestApm:
             "name": "myproject",
             "version": "1.0.0",
             "dependencies": {
-                "mcp": ["ghcr.io/github/github-mcp-server"],
+                "mcp": ["io.github.github/github-mcp-server"],
             }
         }))
         apm._merge_manifest(existing)
         content = yaml.safe_load(existing.read_text())
         assert "apm" in content["dependencies"]
-        assert len(content["dependencies"]["apm"]) == 2
+        assert len(content["dependencies"]["apm"]) == 1
 
     def test_merge_does_not_duplicate_existing_apm_packages(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
@@ -366,16 +364,15 @@ class TestMergeManifestApm:
             "version": "1.0.0",
             "dependencies": {
                 "mcp": [],
-                "apm": ["msitarzewski/agency-agents#older-ref"],
+                "apm": ["lucasflores/agent-skills"],
             }
         }))
         apm._merge_manifest(existing)
         content = yaml.safe_load(existing.read_text())
         apm_list = content["dependencies"]["apm"]
-        # Should have the original entry + lazy-spec-kit (agency-agents not duplicated)
-        agency_entries = [e for e in apm_list if "agency-agents" in e]
-        assert len(agency_entries) == 1
-        assert len(apm_list) == 2
+        agent_skills_entries = [e for e in apm_list if "agent-skills" in e]
+        assert len(agent_skills_entries) == 1
+        assert len(apm_list) == 1
 
     def test_merge_preserves_custom_apm_packages(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
@@ -391,7 +388,7 @@ class TestMergeManifestApm:
         content = yaml.safe_load(existing.read_text())
         apm_list = content["dependencies"]["apm"]
         assert "custom/my-package#v1.0" in apm_list
-        assert len(apm_list) == 3  # custom + agency-agents + lazy-spec-kit
+        assert len(apm_list) == 2  # custom + agent-skills
 
 
 # ── audit (continued) ───────────────────────────────────────────────

@@ -13,23 +13,6 @@ from .manifest import AgentConfig as ManifestAgentConfig, StackManifest
 
 AGENT_PRIORITY = ("claude", "copilot", "cursor")
 
-_EXCLUDED_DIRS = frozenset({".git", ".venv", "venv", "node_modules", ".dev-stack", "__pycache__"})
-
-
-@dataclass(frozen=True, slots=True)
-class StackProfile:
-    """Detected language/tooling profile for a repository."""
-
-    has_python: bool = False
-
-
-def detect_stack_profile(repo_root: Path) -> StackProfile:
-    """Detect the language/tooling stack of the target repository."""
-    for py_file in repo_root.rglob("*.py"):
-        if not _EXCLUDED_DIRS.intersection(py_file.relative_to(repo_root).parts):
-            return StackProfile(has_python=True)
-    return StackProfile()
-
 
 @dataclass(slots=True)
 class AgentInfo:

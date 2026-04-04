@@ -1,8 +1,7 @@
-"""Tests for stack-aware hook generation (US2).
+"""Tests for hook generation.
 
 Covers:
-- _build_hook_list with has_python=False → only dev-stack-pipeline
-- _build_hook_list with has_python=True → pipeline + ruff + pytest + mypy
+- _build_hook_list → pipeline + ruff + pytest + mypy (always Python)
 - _render_pre_commit_config → YAML with managed section markers
 - User hook preservation outside managed section
 """
@@ -12,34 +11,20 @@ from pathlib import Path
 
 import pytest
 
-from dev_stack.config import StackProfile
 from dev_stack.modules.hooks import HookEntry, _build_hook_list, _render_pre_commit_config
 
 
-def test_build_hook_list_no_python() -> None:
-    """T011: has_python=False → only dev-stack-pipeline hook."""
-    profile = StackProfile(has_python=False)
-
-    hooks = _build_hook_list(profile)
-
-    assert len(hooks) == 1
-    assert hooks[0].id == "dev-stack-pipeline"
-
-
-def test_build_hook_list_with_python() -> None:
-    """T012: has_python=True → pipeline + ruff + pytest + mypy."""
-    profile = StackProfile(has_python=True)
-
-    hooks = _build_hook_list(profile)
+def test_build_hook_list_includes_all_python_hooks() -> None:
+    """_build_hook_list always returns pipeline + ruff + pytest + mypy."""
+    hooks = _build_hook_list()
 
     ids = [h.id for h in hooks]
     assert ids == ["dev-stack-pipeline", "dev-stack-ruff", "dev-stack-pytest", "dev-stack-mypy"]
 
 
 def test_render_pre_commit_config_has_yaml_structure() -> None:
-    """T013: Rendered YAML has proper repos/hooks structure."""
-    profile = StackProfile(has_python=False)
-    hooks = _build_hook_list(profile)
+    """Rendered YAML has proper repos/hooks structure."""
+    hooks = _build_hook_list()
 
     yaml_str = _render_pre_commit_config(hooks)
 
@@ -49,11 +34,10 @@ def test_render_pre_commit_config_has_yaml_structure() -> None:
 
 
 def test_managed_section_markers_applied(tmp_path: Path) -> None:
-    """T013 extended: After write_managed_section, file contains markers."""
+    """After write_managed_section, file contains markers."""
     from dev_stack.brownfield.markers import write_managed_section
 
-    profile = StackProfile(has_python=False)
-    hooks = _build_hook_list(profile)
+    hooks = _build_hook_list()
     rendered = _render_pre_commit_config(hooks)
 
     config_path = tmp_path / ".pre-commit-config.yaml"
@@ -65,7 +49,7 @@ def test_managed_section_markers_applied(tmp_path: Path) -> None:
 
 
 def test_user_hooks_preserved_outside_managed_section(tmp_path: Path) -> None:
-    """T014: Existing hooks outside managed section survive re-init."""
+    """Existing hooks outside managed section survive re-init."""
     config_path = tmp_path / ".pre-commit-config.yaml"
     user_content = (
         "repos:\n"
@@ -78,8 +62,7 @@ def test_user_hooks_preserved_outside_managed_section(tmp_path: Path) -> None:
 
     from dev_stack.brownfield.markers import write_managed_section
 
-    profile = StackProfile(has_python=False)
-    hooks = _build_hook_list(profile)
+    hooks = _build_hook_list()
     rendered = _render_pre_commit_config(hooks)
 
     # Simulate what install() does: write managed section

@@ -2,11 +2,8 @@ name: "{{ PROJECT_NAME }}"
 version: "1.0.0"
 dependencies:
   mcp:
-    - ghcr.io/upstash/context7-mcp-server
-    - ghcr.io/github/github-mcp-server
-    - ghcr.io/modelcontextprotocol/sequentialthinking-server
-    - ghcr.io/huggingface/mcp-server
-    - ghcr.io/notebooklm/mcp-server
+    - io.github.upstash/context7
+    - io.github.github/github-mcp-server
+    - huggingface/hf-mcp-server
   apm:
-    - msitarzewski/agency-agents#6254154
-    - Hacklone/lazy-spec-kit#v0.9.0
+    - lucasflores/agent-skills

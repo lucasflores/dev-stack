@@ -7,7 +7,6 @@ from pathlib import Path
 
 from ..brownfield.conflict import ConflictType, FileConflict
 from ..brownfield.markers import write_managed_section
-from ..config import StackProfile, detect_stack_profile
 from ..errors import ConflictError
 from .base import ModuleBase, ModuleResult, ModuleStatus
 
@@ -28,28 +27,24 @@ class HookEntry:
     stages: tuple[str, ...] = ("commit",)
 
 
-def _build_hook_list(profile: StackProfile) -> list[HookEntry]:
-    """Build list of hooks based on the detected stack profile."""
-    hooks: list[HookEntry] = [
+def _build_hook_list() -> list[HookEntry]:
+    """Build list of hooks for the project."""
+    return [
         HookEntry(
             id="dev-stack-pipeline",
             name="dev-stack pipeline",
             entry="dev-stack pipeline run",
             stages=("commit",),
         ),
+        HookEntry(id="dev-stack-ruff", name="ruff lint", entry="ruff check", pass_filenames=True),
+        HookEntry(id="dev-stack-pytest", name="pytest quick suite", entry="pytest -q"),
+        HookEntry(
+            id="dev-stack-mypy",
+            name="mypy type check",
+            entry="python3 -m mypy src/",
+            types=("python",),
+        ),
     ]
-    if profile.has_python:
-        hooks.extend([
-            HookEntry(id="dev-stack-ruff", name="ruff lint", entry="ruff check", pass_filenames=True),
-            HookEntry(id="dev-stack-pytest", name="pytest quick suite", entry="pytest -q"),
-            HookEntry(
-                id="dev-stack-mypy",
-                name="mypy type check",
-                entry="python3 -m mypy src/",
-                types=("python",),
-            ),
-        ])
-    return hooks
 
 
 def _render_pre_commit_config(hooks: list[HookEntry]) -> str:
@@ -91,8 +86,7 @@ class HooksModule(ModuleBase):
         self._copy_with_permission(script_template, script_dest, 0o755, force, created, modified)
 
         # Programmatic generation of .pre-commit-config.yaml via managed section
-        profile = self.stack_profile or detect_stack_profile(self.repo_root)
-        hooks = _build_hook_list(profile)
+        hooks = _build_hook_list()
         rendered = _render_pre_commit_config(hooks)
         config_dest = self.repo_root / ".pre-commit-config.yaml"
         existed = config_dest.exists()
@@ -180,8 +174,7 @@ class HooksModule(ModuleBase):
 
     def preview_files(self) -> dict[Path, str]:
         script_template = (TEMPLATE_DIR / "pre-commit").read_text(encoding="utf-8")
-        profile = self.stack_profile or detect_stack_profile(self.repo_root)
-        hooks = _build_hook_list(profile)
+        hooks = _build_hook_list()
         config_content = _render_pre_commit_config(hooks)
         return {
             Path("scripts/hooks/pre-commit"): script_template,

@@ -8,6 +8,19 @@ from click.testing import CliRunner
 
 from dev_stack.cli.main import cli
 from dev_stack.manifest import ModuleEntry, create_default, write_manifest
+from dev_stack.modules import latest_module_entries
+
+ALL_DEFAULTS = ["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks", "ci-workflows", "docker", "visualization"]
+
+
+def _create_manifest_with_latest_versions(module_names: list[str]):
+    """Create a manifest where module versions match registered module versions."""
+    manifest = create_default(module_names)
+    latest = latest_module_entries(module_names)
+    for name, entry in latest.items():
+        if name in manifest.modules:
+            manifest.modules[name].version = entry.version
+    return manifest
 
 
 def test_update_requires_manifest() -> None:
@@ -42,7 +55,7 @@ def test_update_noop_when_versions_match() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest = _create_manifest_with_latest_versions(ALL_DEFAULTS)
         write_manifest(manifest, Path("dev-stack.toml"))
 
         result = runner.invoke(cli, ["update"])
@@ -60,8 +73,8 @@ def test_update_prompts_for_new_default_modules() -> None:
         manifest = create_default(["hooks"])
         write_manifest(manifest, Path("dev-stack.toml"))
 
-        # Decline all new module prompts
-        result = runner.invoke(cli, ["update"], input="n\nn\nn\nn\n")
+        # Decline all new module prompts (one per missing default)
+        result = runner.invoke(cli, ["update"], input="n\n" * 10)
 
         assert result.exit_code == 0
         assert "New modules are available" in result.output
@@ -90,7 +103,7 @@ def test_update_deprecated_module_emits_info_and_no_error() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest = _create_manifest_with_latest_versions(ALL_DEFAULTS)
         manifest.modules["speckit"] = ModuleEntry(version="0.1.0", installed=True)
         write_manifest(manifest, Path("dev-stack.toml"))
 
@@ -106,7 +119,7 @@ def test_update_deprecated_module_writes_deprecated_true() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest = _create_manifest_with_latest_versions(ALL_DEFAULTS)
         manifest.modules["speckit"] = ModuleEntry(version="0.1.0", installed=True)
         write_manifest(manifest, Path("dev-stack.toml"))
 
@@ -122,7 +135,7 @@ def test_update_deprecated_module_with_installed_false() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest = _create_manifest_with_latest_versions(ALL_DEFAULTS)
         manifest.modules["speckit"] = ModuleEntry(version="0.1.0", installed=False)
         write_manifest(manifest, Path("dev-stack.toml"))
 
@@ -139,7 +152,7 @@ def test_update_no_speckit_no_deprecation_message() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path(".git").mkdir()
-        manifest = create_default(["uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks"])
+        manifest = _create_manifest_with_latest_versions(ALL_DEFAULTS)
         write_manifest(manifest, Path("dev-stack.toml"))
 
         result = runner.invoke(cli, ["update"])

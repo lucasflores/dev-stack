@@ -1,6 +1,6 @@
 # Dev-Stack Ecosystem
 
-> One-command bootstrap — 9 pluggable modules, 9-stage pipeline, CodeBoarding visualization, and VCS best-practices enforcement for any Python repo.
+> One-command bootstrap — 8 pluggable modules, 9-stage pipeline, CodeBoarding visualization, and VCS best-practices enforcement for any Python repo.
 
 - [What Is Dev-Stack?](#what-is-dev-stack)
 - [Key Capabilities](#key-capabilities)
@@ -16,13 +16,12 @@
 - [Repository Layout](#repository-layout)
 - [Architecture Snapshot](#architecture-snapshot)
 - [Development](#development)
-- [Spec Assets](#spec-assets)
 
 ## What Is Dev-Stack?
 
 Dev-Stack is a Python 3.11+ CLI that turns any repository into a fully automated, AI-ready workspace. Run a single `dev-stack init` command and get:
 
-- **9 pluggable modules** — Hooks, Spec Kit, MCP Servers, CI Workflows, Docker, Visualization, UV Project, Sphinx Docs, and VCS Hooks install independently or as a curated bundle
+- **8 pluggable modules** — Hooks, apm (Agent Project Maneger for agents, skills, and MCP), CI Workflows, Docker, Visualization, UV Project, Sphinx Docs, and VCS Hooks install independently or as a curated bundle
 - **9-stage automation pipeline** — lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → visualize → commit-message, wired into git pre-commit hooks with hard/soft gating
 - **CodeBoarding visualization** — generates Mermaid architecture diagrams from source analysis and injects them into README files with managed markers
 - **VCS best-practices enforcement** — conventional commit linting, configurable branch naming, SSH commit signing, PR generation, changelog automation, and semantic release
@@ -30,11 +29,10 @@ Dev-Stack is a Python 3.11+ CLI that turns any repository into a fully automated
 - **Agent-native execution** — auto-detects Claude, GitHub Copilot, or Cursor CLIs for docs generation, commit messages, and architecture diagrams
 - **Brownfield safety** — marker-delimited sections, SHA-256 conflict detection, and git-based rollback prevent accidental overwrites in existing repos
 
-The CLI mirrors the artifacts inside [specs/001-dev-stack-ecosystem](specs/001-dev-stack-ecosystem) and every subsequent spec.
 
 ## Key Capabilities
 
-- 🧩 **Module-driven scaffolding** — 9 independently installable modules cover hooks, specs, MCP servers, CI, Docker, visualization, Python project setup, Sphinx docs, and VCS enforcement
+- 🧩 **Module-driven scaffolding** — 9 independently installable modules cover hooks, specs, apm, CI, Docker, visualization, Python project setup, Sphinx docs, and VCS enforcement
 - 🔁 **9-stage automation pipeline** — lint, typecheck, test, security, docs-api, docs-narrative, infra-sync, visualize, and commit-message stages with hard/soft gating wired into git hooks
 - 📊 **CodeBoarding visualization** — generates Mermaid architecture diagrams from source analysis with `--depth-level`, `--incremental`, and per-folder sub-diagrams
 - 🔒 **VCS best-practices enforcement** — conventional commit linting, configurable branch naming regex, SSH commit signing, automated PR descriptions, changelogs, and semantic releases
@@ -51,7 +49,7 @@ The CLI mirrors the artifacts inside [specs/001-dev-stack-ecosystem](specs/001-d
 | git 2.30+ | Hooks, rollback, conflict detection | **Yes** |
 | Coding agent CLI | Powers docs, commit-message, and visualize stages (auto-detects `claude`, `gh copilot`, or `cursor`) | **Yes** |
 | [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) | Architecture diagram generation — gracefully skipped when absent | Optional |
-| [specify-cli](https://github.com/Hacklone/lazy-spec-kit) | `specify init --here --ai copilot` scaffolds the `.specify/` directory | Optional |
+| [speckit-cli](https://github.com/github/spec-kit) | `specify init --here --ai copilot` scaffolds the `.specify/` directory | Optional |
 | mypy | Type checking in the `typecheck` pipeline stage — skipped when absent | Optional |
 | sphinx + sphinx-rtd-theme | API docs in the `docs-api` pipeline stage — skipped when absent | Optional |
 | [git-cliff](https://git-cliff.org/) | Changelog generation via `dev-stack changelog` — warns when absent | Optional |
@@ -99,21 +97,17 @@ Once the package is published to PyPI: `uv tool install dev-stack`.
 cd /path/to/your-repo
 
 # Greenfield — scaffold a brand-new Python project
-uv init --package   # creates pyproject.toml, src/ layout, tests/
-dev-stack --json init
-git add -A && git commit -m "chore: initial dev-stack setup"
+dev-stack init
 
 # (Optional) Scaffold the .specify/ directory for spec-driven workflows
-uv tool install specify-cli   # one-time install
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git  # one-time install
 specify init --here --ai copilot
-git add -A && git commit -m "chore: add specify scaffold"
 
 # Brownfield — augment an existing repo (safe conflict detection)
-dev-stack --dry-run --json init   # preview what will change
-dev-stack --json init             # apply
+dev-stack --dry-run init   # preview what will change
+dev-stack init             # apply
 ```
 
-- The `specify init` step is separate from `dev-stack init` because spec tooling is now managed via the APM module rather than a built-in speckit module.
 - The first commit after `dev-stack init` passes all pre-commit hooks automatically — no `--no-verify` needed.
 - Set `DEV_STACK_AGENT=none` to skip agent detection entirely, or `DEV_STACK_AGENT=<cli>` to override auto-detection (`claude` → `gh copilot` → `cursor`).
 - Pass `--modules hooks,visualization` (or any subset) to control which modules are installed.
@@ -127,18 +121,16 @@ dev-stack --json init             # apply
 | `scripts/hooks/pre-commit` | Shell entry point for git pre-commit | hooks |
 | `.git/hooks/commit-msg` | Conventional-commit linting via gitlint + custom rules | vcs_hooks |
 | `.git/hooks/pre-push` | Branch naming + signing enforcement | vcs_hooks |
-| `.specify/` | Spec-driven workflow scaffold — constitution, memory, templates, scripts (created by `specify init`) | apm |
+| `.specify/` | Spec-driven workflow scaffold — constitution, memory, templates, scripts (created by `lazyspeckit init`) | lazyspeckit-cli |
 | `.dev-stack/instructions.md` | Agent instructions injected into detected agent config | vcs_hooks |
 | `.specify/templates/constitution-template.md` | Baseline practices injected into speckit constitution template | vcs_hooks |
 | `cliff.toml` | git-cliff configuration for changelog generation | vcs_hooks |
 | `.github/workflows/dev-stack-*.yml` | CI workflows — tests, deploy, vulnerability scan | ci_workflows |
-| `.claude/settings.local.json` or `.github/copilot-mcp.json` | MCP server configs for the detected agent | mcp_servers |
 | `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Sphinx documentation scaffold | sphinx_docs |
 | `.codeboarding/` | CodeBoarding analysis output directory | visualization |
 | `.dev-stack/` | Internal state — `pipeline/` and `viz/` are gitignored; `instructions.md` and `hooks-manifest.json` are tracked | core |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment | docker |
 
-Default greenfield modules (5): `uv_project`, `sphinx_docs`, `hooks`, `apm`, `vcs_hooks`. The remaining 4 (`mcp_servers`, `ci_workflows`, `docker`, `visualization`) are opt-in via `--modules`.
 
 > **Edge case — existing repo, no conflicts:** If a repo already has commits and content but none of its files overlap with dev-stack's proposed assets, init treats it as greenfield. This is safe because greenfield mode only *adds* new files — it never modifies or deletes existing content.
 
@@ -148,10 +140,7 @@ After init, commit the generated files with `git add -A && git commit -m "chore:
 
 | Command | What it does |
 |---------|--------------|
-| `dev-stack init [--modules ...]` | Detects greenfield/brownfield mode, installs modules, writes `dev-stack.toml`, records rollback tag. Repos with existing content but no file overlap with proposed assets are treated as greenfield (no conflicts to resolve). |
-| `dev-stack update [--modules ...]` | Refreshes managed sections or adds modules; detects new defaults and prompts interactively |
 | `dev-stack rollback [--ref TAG]` | Restores files to the last (or specified) rollback tag and cleans up intermediate tags |
-| `dev-stack mcp install\|verify` | Writes MCP server configs for the detected agent and runs health checks |
 | `dev-stack pipeline run [--force]` | Executes the 9-stage pipeline: lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → visualize → commit-message |
 | `dev-stack visualize [--incremental] [--depth-level N] [--no-readme] [--timeout S]` | Generates Mermaid architecture diagrams via CodeBoarding and injects them into README files (also runs automatically as pipeline stage 8) |
 | `dev-stack status` | Summarizes module health, detected agent, and last pipeline run |
@@ -168,8 +157,7 @@ All commands support `--json` (placed before the subcommand: `dev-stack --json <
 | Module | Managed Assets | Highlights |
 |--------|----------------|------------|
 | **Hooks** | `.pre-commit-config.yaml`, `scripts/hooks/pre-commit` | 9-stage automation pipeline wired into git pre-commit hooks |
-| **Spec Kit** | `.specify/` scaffold, `.dev-stack/bin/specify` shim | Ships constitution, memory, templates, and scripts; preserves `memory/constitution.md` on update |
-| **MCP Servers** | `.claude/settings.local.json` or `.github/copilot-mcp.json` | Auto-installs Context7, GitHub, Sequential Thinking, Hugging Face, NotebookLM servers for detected agent |
+| **APM (Agent Package Manager)** | TBD | Auto-installs Context7, GitHub, and Hugging Face for detected agent |
 | **CI Workflows** | `.github/workflows/dev-stack-{tests,deploy,vuln-scan}.yml` | Opinionated multi-job GitHub Actions CI with SHA-256 conflict detection |
 | **Docker** | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation with `DEV_STACK_PIP_SPEC` overrides; uv-based installation |
 | **Visualization** | `.codeboarding/`, `.dev-stack/viz/` | CodeBoarding CLI → Mermaid diagram generation + managed-marker README injection; cleans up legacy `docs/diagrams/` |
@@ -177,7 +165,7 @@ All commands support `--json` (placed before the subcommand: `dev-stack --json <
 | **Sphinx Docs** | `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Auto-detects package name; generates docs with `-W --keep-going` flags; appends `docs/_build/` to `.gitignore` |
 | **VCS Hooks** | `.git/hooks/commit-msg`, `.git/hooks/pre-push`, `.specify/templates/constitution-template.md`, `.dev-stack/instructions.md`, `cliff.toml` | Conventional commit linting (gitlint + custom rules), branch naming enforcement, SSH signing configuration, constitutional agent instructions, checksum-tracked hook manifests |
 
-Dependencies are resolved automatically — for example, Sphinx Docs requires UV Project. Default greenfield install order: `uv_project` → `sphinx_docs` → `hooks` → `speckit` → `vcs_hooks`.
+Dependencies are resolved automatically — for example, Sphinx Docs requires UV Project. Default greenfield install order: `uv_project` → `sphinx_docs` → `hooks` → `vcs_hooks`.
 
 ## Automation Pipeline
 
@@ -266,14 +254,14 @@ visualize = true        # Auto-regenerate CodeBoarding diagrams as pipeline stag
 ```
 dev-stack/
 ├── src/dev_stack/
-│   ├── cli/                  # Click commands (init, update, rollback, mcp, pipeline, …)
-│   ├── modules/              # 9 pluggable modules (hooks, speckit, mcp_servers, …)
+│   ├── cli/                  # Click commands (init, update, rollback, apm, pipeline, …)
+│   ├── modules/              # 8 pluggable modules (hooks, speckit, apm, …)
 │   ├── pipeline/             # 9-stage orchestrator, agent bridge, commit formatter
 │   ├── brownfield/           # Conflict detection, marker utilities, rollback helpers
 │   ├── vcs/                  # Commit parsing, branch validation, PR/changelog/release, signing, scope
 │   ├── rules/                # Gitlint custom rules — conventional commits + trailers
 │   ├── visualization/        # CodeBoarding runner, output parser, README injector, incremental diffing
-│   ├── templates/            # Vendored hooks, CI, Docker, MCP, Spec Kit, and VCS templates
+│   ├── templates/            # Vendored hooks, CI, Docker, Spec Kit, and VCS templates
 │   ├── config.py             # Agent detection + manifest loading
 │   ├── errors.py             # Structured error hierarchy
 │   └── manifest.py           # dev-stack.toml reader/writer
@@ -281,12 +269,6 @@ dev-stack/
 │   ├── unit/                 # Fast isolated tests for every module and package
 │   ├── integration/          # End-to-end flows (init, update, rollback, visualize, …)
 │   └── contract/             # CLI schema + module interface contracts
-├── specs/
-│   ├── 001-dev-stack-ecosystem/
-│   ├── 002-init-pipeline-enhancements/
-│   ├── 003-codeboarding-viz/
-│   ├── 004-vcs-best-practices/
-│   └── 005-readme-update/
 ├── .specify/                 # GitHub Spec Kit scaffold (vendored)
 ├── .dev-stack/               # Internal state — viz manifests, pipeline cache (gitignored)
 ├── pyproject.toml            # Package metadata, dependencies, tool config
@@ -296,13 +278,13 @@ dev-stack/
 ## Architecture Snapshot
 
 - **`src/dev_stack/cli/`** — Click-based CLI with 12 commands, global `--json`/`--dry-run`/`--verbose` flags, and structured exit codes.
-- **`src/dev_stack/modules/`** — 9 pluggable modules implementing the `ModuleBase` contract (`install`, `verify`, `uninstall`); dependency resolution ensures correct ordering.
+- **`src/dev_stack/modules/`** — 8 pluggable modules implementing the `ModuleBase` contract (`install`, `verify`, `uninstall`); dependency resolution ensures correct ordering.
 - **`src/dev_stack/pipeline/`** — 9-stage orchestrator with hard/soft gating, `ProcessPoolExecutor` parallelization, `AgentBridge` for coding-agent invocation, and last-run state persistence.
 - **`src/dev_stack/brownfield/`** — Conflict detection via SHA-256 checksums, marker-delimited managed sections, interactive resolution prompts, and git tag–based rollback.
 - **`src/dev_stack/vcs/`** — Commit parsing (`git log` → typed `CommitSummary`), branch validation against configurable regex, PR description generation with AI/human stats, changelog via git-cliff, semantic release with version bumping, SSH signing configuration, and scope advisory analysis.
 - **`src/dev_stack/rules/`** — Custom gitlint rules: `ConventionalCommitRule` (validates `type(scope): description`), `TrailerPresenceRule` + `TrailerPathRule` (enforce required trailers on agent commits), and `PipelineFailureWarningRule` (non-blocking warnings for failed stages).
 - **`src/dev_stack/visualization/`** — CodeBoarding CLI runner with timeout management, `.codeboarding/analysis.json` parser that extracts Mermaid diagrams, README injector with managed markers and ledger tracking, and incremental diffing via SHA-256 file manifests.
-- **`src/dev_stack/templates/`** — Vendored hook scripts, CI workflows, Docker assets, MCP server configs (Claude + Copilot), Spec Kit scaffolding, and VCS templates (cliff.toml, constitution, instructions, PR template).
+- **`src/dev_stack/templates/`** — Vendored hook scripts, CI workflows, Docker assets, Spec Kit scaffolding, and VCS templates (cliff.toml, constitution, instructions, PR template).
 - **`tests/`** — Unit, integration, and contract suites enforcing CLI schemas, module behaviors, and pipeline correctness.
 
 ## Development
@@ -334,15 +316,3 @@ Before merging, rerun the [Validation Checklist](#validation-checklist) to keep 
 | `constitution-template.md` at repo root instead of `.specify/templates/` | Old install placement (pre-007) | Re-run `dev-stack init` — the file will be migrated automatically |
 | Pre-commit hooks fail on the very first commit | Rare edge case with external baseline tools | Use `git commit --no-verify -m "chore: initial setup"` as a one-time fallback, then fix the underlying issue |
 
-## Spec Assets
-
-- **001 — Dev-Stack Ecosystem** (initial scaffold)
-  - [spec.md](specs/001-dev-stack-ecosystem/spec.md) · [plan.md](specs/001-dev-stack-ecosystem/plan.md) · [data-model.md](specs/001-dev-stack-ecosystem/data-model.md) · [contracts/](specs/001-dev-stack-ecosystem/contracts) · [tasks.md](specs/001-dev-stack-ecosystem/tasks.md) · [quickstart.md](specs/001-dev-stack-ecosystem/quickstart.md)
-- **002 — Init Pipeline Enhancements** (UV Project, Sphinx Docs, 8-stage pipeline)
-  - [spec.md](specs/002-init-pipeline-enhancements/spec.md) · [plan.md](specs/002-init-pipeline-enhancements/plan.md) · [data-model.md](specs/002-init-pipeline-enhancements/data-model.md) · [tasks.md](specs/002-init-pipeline-enhancements/tasks.md)
-- **003 — CodeBoarding Visualization** (CodeBoarding + Mermaid diagram generation)
-  - [spec.md](specs/003-codeboarding-viz/spec.md) · [plan.md](specs/003-codeboarding-viz/plan.md) · [data-model.md](specs/003-codeboarding-viz/data-model.md) · [tasks.md](specs/003-codeboarding-viz/tasks.md)
-- **004 — VCS Best Practices** (commit linting, branch naming, signing, PR/changelog/release)
-  - [spec.md](specs/004-vcs-best-practices/spec.md) · [plan.md](specs/004-vcs-best-practices/plan.md) · [data-model.md](specs/004-vcs-best-practices/data-model.md) · [tasks.md](specs/004-vcs-best-practices/tasks.md)
-
-Need to regenerate specs or tasks? Run `/speckit.plan`, `/speckit.specify`, and `/speckit.tasks` from the repo root.

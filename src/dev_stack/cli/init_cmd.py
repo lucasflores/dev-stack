@@ -20,7 +20,7 @@ from ..brownfield.conflict import (
 )
 from ..brownfield.rollback import create_rollback_tag
 from ..brownfield.markers import write_managed_section
-from ..config import AgentInfo, StackProfile, detect_agent, detect_stack_profile
+from ..config import AgentInfo, detect_agent
 from ..errors import ManifestError
 from ..manifest import AgentConfig, StackManifest, create_default, read_manifest, write_manifest
 from ..modules import instantiate_modules, resolve_module_names
@@ -64,13 +64,12 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
         raise SystemExit(ExitCode.GENERAL_ERROR)
 
     requested_modules = parse_modules(modules_csv)
-    stack_profile = detect_stack_profile(repo_root)
     if requested_modules:
         module_names = resolve_module_names(requested_modules, include_defaults=False)
     elif existing_manifest:
         module_names = list(existing_manifest.modules.keys())
     else:
-        module_names = resolve_module_names(include_defaults=True, stack_profile=stack_profile)
+        module_names = resolve_module_names(include_defaults=True)
 
     if existing_manifest and not requested_modules:
         manifest = existing_manifest
@@ -83,7 +82,7 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     agent_info = detect_agent(manifest)
     manifest.agent = AgentConfig(cli=agent_info.cli)
 
-    module_instances = instantiate_modules(repo_root, manifest, module_names, stack_profile=stack_profile)
+    module_instances = instantiate_modules(repo_root, manifest, module_names)
     detection_map, preview_lookup = collect_proposed_files(module_instances)
     conflict_report = build_conflict_report("init", repo_root, detection_map)
 

@@ -29,15 +29,12 @@ class APMModule(ModuleBase):
     MANAGED_FILES: Sequence[str] = (MANIFEST_FILE, LOCKFILE)
     MIN_APM_VERSION = "0.8.0"
     DEFAULT_SERVERS: tuple[str, ...] = (
-        "ghcr.io/upstash/context7-mcp-server",
-        "ghcr.io/github/github-mcp-server",
-        "ghcr.io/modelcontextprotocol/sequentialthinking-server",
-        "ghcr.io/huggingface/mcp-server",
-        "ghcr.io/notebooklm/mcp-server",
+        "io.github.upstash/context7",
+        "io.github.github/github-mcp-server",
+        "huggingface/hf-mcp-server",
     )
     DEFAULT_APM_PACKAGES: tuple[str, ...] = (
-        "msitarzewski/agency-agents#6254154",
-        "Hacklone/lazy-spec-kit#v0.9.0",
+        "lucasflores/agent-skills",
     )
 
     def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None, **kwargs: Any) -> None:

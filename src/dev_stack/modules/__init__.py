@@ -3,19 +3,16 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Iterable, List, Sequence, Type
+from typing import Dict, Iterable, List, Sequence, Type
 
 from ..errors import DependencyError
 from ..manifest import DEFAULT_MODULE_VERSION, ModuleEntry, StackManifest
 from .base import ModuleBase
 
-if TYPE_CHECKING:
-    from ..config import StackProfile
-
 ModuleClass = Type[ModuleBase]
 
 _MODULE_REGISTRY: Dict[str, ModuleClass] = {}
-DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks")
+DEFAULT_GREENFIELD_MODULES: Sequence[str] = ("uv_project", "sphinx_docs", "hooks", "apm", "vcs_hooks", "ci-workflows", "docker", "visualization")
 PYTHON_ONLY_MODULES: frozenset[str] = frozenset({"uv_project", "sphinx_docs"})
 
 DEPRECATED_MODULES: dict[str, str] = {
@@ -42,15 +39,12 @@ def resolve_module_names(
 	requested: Iterable[str] | None = None,
 	*,
 	include_defaults: bool = True,
-	stack_profile: StackProfile | None = None,
 ) -> list[str]:
 	"""Resolve modules plus dependencies in deterministic order."""
 
 	requested_set = OrderedDict()
 	if include_defaults:
 		for name in DEFAULT_GREENFIELD_MODULES:
-			if stack_profile and not stack_profile.has_python and name in PYTHON_ONLY_MODULES:
-				continue
 			requested_set.setdefault(name, None)
 	if requested:
 		for name in requested:
@@ -85,15 +79,13 @@ def instantiate_modules(
 	repo_root: Path,
 	manifest: StackManifest | None,
 	module_names: Sequence[str],
-	*,
-	stack_profile: StackProfile | None = None,
 ) -> list[ModuleBase]:
 	"""Instantiate modules in resolved order."""
 
 	instances: list[ModuleBase] = []
 	for name in module_names:
 		module_cls = _MODULE_REGISTRY[name]
-		instances.append(module_cls(repo_root, manifest.to_dict() if manifest else None, stack_profile=stack_profile))
+		instances.append(module_cls(repo_root, manifest.to_dict() if manifest else None))
 	return instances
 
 
@@ -112,4 +104,4 @@ def latest_module_entries(module_names: Sequence[str] | None = None) -> dict[str
 
 
 # Import built-in modules so they register themselves.
-from . import apm, ci_workflows, docker, hooks, mcp_servers, sphinx_docs, uv_project, vcs_hooks, visualization  # noqa: E402,F401
+from . import apm, ci_workflows, docker, hooks, sphinx_docs, uv_project, vcs_hooks, visualization  # noqa: E402,F401

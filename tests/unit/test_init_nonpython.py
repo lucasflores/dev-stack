@@ -1,4 +1,4 @@
-"""Tests for non-Python init pipeline behaviour.
+"""Tests for init pipeline behaviour.
 
 Covers US1 (uv sync gating), US4 (gitignore managed section), US5 (secrets gating).
 """
@@ -115,38 +115,37 @@ def test_gitignore_preserves_existing_content(tmp_path) -> None:
 # --- Phase 9: Integration / cross-story tests ---
 
 
-def test_full_nonpython_init_produces_clean_config(tmp_path: Path) -> None:
-    """T048: Full non-Python init flow validation (cross-story).
+def test_full_init_produces_clean_config(tmp_path: Path) -> None:
+    """Full init flow validation (cross-story).
 
     Verifies:
     - uv sync guard is in place
     - _generate_secrets_baseline not called
     - gitignore managed section present
     - No absolute paths in manifest
-    - Hook config only has pipeline hook
+    - Hook config has all Python hooks
     """
     from dev_stack.brownfield.markers import write_managed_section
     from dev_stack.cli.init_cmd import _ensure_gitignore_managed_section
-    from dev_stack.config import StackProfile, detect_stack_profile
     from dev_stack.manifest import AgentConfig, create_default, write_manifest
     from dev_stack.modules.hooks import _build_hook_list, _render_pre_commit_config
 
     # Setup: pure markdown repo
     (tmp_path / "README.md").write_text("# Test")
 
-    profile = detect_stack_profile(tmp_path)
-    assert profile.has_python is False
+    # Hooks: should include all Python hooks
+    hooks = _build_hook_list()
+    ids = [h.id for h in hooks]
+    assert "dev-stack-pipeline" in ids
+    assert "dev-stack-ruff" in ids
+    assert "dev-stack-pytest" in ids
+    assert "dev-stack-mypy" in ids
 
-    # Hooks: should only have pipeline
-    hooks = _build_hook_list(profile)
-    assert len(hooks) == 1
-    assert hooks[0].id == "dev-stack-pipeline"
-
-    # Config: no Python hooks
+    # Config: Python hooks present
     rendered = _render_pre_commit_config(hooks)
-    assert "ruff" not in rendered
-    assert "pytest" not in rendered
-    assert "mypy" not in rendered
+    assert "ruff" in rendered
+    assert "pytest" in rendered
+    assert "mypy" in rendered
 
     # Gitignore: managed section
     _ensure_gitignore_managed_section(tmp_path)
@@ -164,18 +163,11 @@ def test_full_nonpython_init_produces_clean_config(tmp_path: Path) -> None:
     assert "path" not in content.lower().split("[agent]")[-1].split("[")[0] if "[agent]" in content else True
 
 
-def test_python_repo_init_includes_all_hooks(tmp_path: Path) -> None:
-    """T049: Python repo init regression guard — Python hooks present."""
-    from dev_stack.config import detect_stack_profile
+def test_build_hook_list_always_includes_python_hooks() -> None:
+    """_build_hook_list always returns all Python hooks."""
     from dev_stack.modules.hooks import _build_hook_list
 
-    (tmp_path / "src" / "pkg").mkdir(parents=True)
-    (tmp_path / "src" / "pkg" / "__init__.py").write_text("")
-
-    profile = detect_stack_profile(tmp_path)
-    assert profile.has_python is True
-
-    hooks = _build_hook_list(profile)
+    hooks = _build_hook_list()
     ids = [h.id for h in hooks]
     assert "dev-stack-pipeline" in ids
     assert "dev-stack-ruff" in ids
@@ -184,7 +176,7 @@ def test_python_repo_init_includes_all_hooks(tmp_path: Path) -> None:
 
 
 def test_polyglot_repo_python_hooks_but_no_uv_sync() -> None:
-    """T050: Polyglot repo: has Python files but uv_project not selected → hooks detect Python, uv sync doesn't run."""
+    """Polyglot repo: uv sync is gated by uv_project."""
     import dev_stack.cli.init_cmd as init_mod
 
     source = inspect.getsource(init_mod)
@@ -199,57 +191,11 @@ def test_polyglot_repo_python_hooks_but_no_uv_sync() -> None:
     pytest.fail("No uv sync call found")
 
 
-# --- Fix #5/#6: Stack-aware default module filtering ---
-
-
-def test_resolve_defaults_excludes_python_modules_for_nonpython(tmp_path: Path) -> None:
-    """Non-Python repo: resolve_module_names(include_defaults=True) excludes uv_project and sphinx_docs."""
-    from dev_stack.config import StackProfile
-    from dev_stack.modules import PYTHON_ONLY_MODULES, resolve_module_names
-
-    profile = StackProfile(has_python=False)
-    resolved = resolve_module_names(include_defaults=True, stack_profile=profile)
-
-    for name in PYTHON_ONLY_MODULES:
-        assert name not in resolved, f"{name} should be excluded for non-Python repos"
-    # Language-agnostic modules remain
-    assert "hooks" in resolved
-    assert "apm" in resolved
-    assert "vcs_hooks" in resolved
-
-
-def test_resolve_defaults_includes_python_modules_for_python(tmp_path: Path) -> None:
-    """Python repo: resolve_module_names(include_defaults=True) includes all defaults."""
-    from dev_stack.config import StackProfile
+def test_resolve_defaults_includes_all_modules() -> None:
+    """resolve_module_names(include_defaults=True) includes all default modules."""
     from dev_stack.modules import DEFAULT_GREENFIELD_MODULES, resolve_module_names
 
-    profile = StackProfile(has_python=True)
-    resolved = resolve_module_names(include_defaults=True, stack_profile=profile)
+    resolved = resolve_module_names(include_defaults=True)
 
     for name in DEFAULT_GREENFIELD_MODULES:
         assert name in resolved
-
-
-def test_hooks_module_uses_precomputed_profile(tmp_path: Path) -> None:
-    """HooksModule.install() uses a pre-computed profile instead of re-detecting."""
-    from dev_stack.config import StackProfile
-    from dev_stack.modules.hooks import HooksModule, _build_hook_list
-
-    repo = tmp_path / "repo"
-    (repo / ".git" / "hooks").mkdir(parents=True)
-    # Create a .py file that would make detect_stack_profile return has_python=True
-    (repo / "src" / "pkg").mkdir(parents=True)
-    (repo / "src" / "pkg" / "__init__.py").write_text("")
-
-    # But pass a profile that says non-Python — the module should trust it
-    profile = StackProfile(has_python=False)
-    module = HooksModule(repo, stack_profile=profile)
-
-    result = module.install()
-    assert result.success
-
-    config = (repo / ".pre-commit-config.yaml").read_text()
-    assert "ruff" not in config
-    assert "pytest" not in config
-    assert "mypy" not in config
-    assert "dev-stack-pipeline" in config

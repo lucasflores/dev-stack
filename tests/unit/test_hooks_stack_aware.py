@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dev_stack.modules.hooks import HookEntry, _build_hook_list, _render_pre_commit_config
 
@@ -49,7 +50,7 @@ def test_managed_section_markers_applied(tmp_path: Path) -> None:
 
 
 def test_user_hooks_preserved_outside_managed_section(tmp_path: Path) -> None:
-    """Existing hooks outside managed section survive re-init."""
+    """Existing repos and local repo user hooks survive re-init via YAML merge."""
     config_path = tmp_path / ".pre-commit-config.yaml"
     user_content = (
         "repos:\n"
@@ -60,15 +61,27 @@ def test_user_hooks_preserved_outside_managed_section(tmp_path: Path) -> None:
     )
     config_path.write_text(user_content)
 
-    from dev_stack.brownfield.markers import write_managed_section
+    from dev_stack.modules.hooks import _build_hook_list, _write_pre_commit_config
 
     hooks = _build_hook_list()
-    rendered = _render_pre_commit_config(hooks)
+    _write_pre_commit_config(config_path, hooks)
 
-    # Simulate what install() does: write managed section
-    write_managed_section(config_path, "HOOKS", rendered)
+    result = yaml.safe_load(config_path.read_text())
 
-    result = config_path.read_text()
-    assert "my-custom-hook" in result
-    assert "dev-stack-pipeline" in result
-    assert "DEV-STACK:BEGIN:HOOKS" in result
+    # The file must be valid YAML with a single top-level repos: key.
+    assert isinstance(result.get("repos"), list)
+    repos_text = config_path.read_text()
+    assert repos_text.count("repos:") == 1, "Must not produce duplicate top-level repos: keys"
+
+    # User's external repo must be preserved.
+    repo_urls = [r.get("repo") for r in result["repos"] if isinstance(r, dict)]
+    assert "https://github.com/user/custom-hook" in repo_urls
+
+    # Dev-stack pipeline hook must be present in the local repo.
+    local_repo = next(
+        (r for r in result["repos"] if isinstance(r, dict) and r.get("repo") == "local"),
+        None,
+    )
+    assert local_repo is not None
+    hook_ids = [h["id"] for h in local_repo.get("hooks", [])]
+    assert "dev-stack-pipeline" in hook_ids

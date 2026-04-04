@@ -68,10 +68,14 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
         if deprecated_requested:
             for name in deprecated_requested:
                 msg = DEPRECATED_MODULES[name]
+                entry = manifest.modules.get(name)
+                if entry is not None:
+                    entry.deprecated = True
                 if not ctx.json_output:
                     click.echo(f"\nℹ Module '{name}' has been removed.")
                     click.echo(f"  {msg}")
         if not active_requested:
+            write_manifest(manifest, manifest_path)
             _emit_noop(ctx)
             return
         try:
@@ -91,7 +95,8 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
     if not requested_modules and not ctx.json_output:
         opted_in = _prompt_new_modules(manifest, ctx)
         if opted_in:
-            module_names = resolve_module_names(module_names + opted_in, include_defaults=False)
+            active_names = [n for n in module_names if n not in DEPRECATED_MODULES]
+            module_names = resolve_module_names(active_names + opted_in, include_defaults=False)
 
     # Handle deprecated modules: emit info, mark in TOML, filter out.
     deprecated_found = _handle_deprecated_modules(manifest, module_names, ctx)

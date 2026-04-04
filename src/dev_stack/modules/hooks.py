@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from ..brownfield.conflict import ConflictType, FileConflict
-from ..brownfield.markers import write_managed_section
 from ..errors import ConflictError
 from .base import ModuleBase, ModuleResult, ModuleStatus
 
@@ -47,22 +49,86 @@ def _build_hook_list() -> list[HookEntry]:
     ]
 
 
+def _hook_entry_to_dict(hook: HookEntry) -> dict[str, Any]:
+    """Convert a HookEntry to a pre-commit hook dict."""
+    d: dict[str, Any] = {
+        "id": hook.id,
+        "name": hook.name,
+        "entry": hook.entry,
+        "language": hook.language,
+        "pass_filenames": hook.pass_filenames,
+    }
+    if hook.types:
+        d["types"] = list(hook.types)
+    if hook.stages:
+        d["stages"] = list(hook.stages)
+    return d
+
+
 def _render_pre_commit_config(hooks: list[HookEntry]) -> str:
-    """Render hooks as YAML string for managed section content."""
-    lines: list[str] = ["repos:", "  - repo: local", "    hooks:"]
-    for hook in hooks:
-        lines.append(f"      - id: {hook.id}")
-        lines.append(f"        name: {hook.name}")
-        lines.append(f"        entry: {hook.entry}")
-        lines.append(f"        language: {hook.language}")
-        lines.append(f"        pass_filenames: {'true' if hook.pass_filenames else 'false'}")
-        if hook.types:
-            types_str = ", ".join(hook.types)
-            lines.append(f"        types: [{types_str}]")
-        if hook.stages:
-            stages_str = ", ".join(hook.stages)
-            lines.append(f"        stages: [{stages_str}]")
-    return "\n".join(lines)
+    """Render hooks as YAML string for a fresh .pre-commit-config.yaml."""
+    data = {
+        "repos": [
+            {
+                "repo": "local",
+                "hooks": [_hook_entry_to_dict(h) for h in hooks],
+            }
+        ]
+    }
+    return yaml.dump(data, default_flow_style=False, sort_keys=False)
+
+
+def _write_pre_commit_config(config_dest: Path, hooks: list[HookEntry]) -> bool:
+    """Write dev-stack hooks to .pre-commit-config.yaml using YAML-aware merge.
+
+    Dev-stack hook entries (ids prefixed with ``dev-stack-``) in the ``local``
+    repo are replaced on each call; all other repos and hooks are preserved.
+    Returns ``True`` if the file was changed.
+    """
+    ds_hook_dicts = [_hook_entry_to_dict(h) for h in hooks]
+
+    if not config_dest.exists():
+        content = _render_pre_commit_config(hooks)
+        config_dest.write_text(content, encoding="utf-8")
+        return True
+
+    existing_text = config_dest.read_text(encoding="utf-8")
+    try:
+        existing: dict[str, Any] = yaml.safe_load(existing_text) or {}
+    except yaml.YAMLError:
+        # Unparseable YAML — overwrite with just dev-stack hooks.
+        config_dest.write_text(_render_pre_commit_config(hooks), encoding="utf-8")
+        return True
+
+    repos: list[dict[str, Any]] = list(existing.get("repos") or [])
+
+    # Locate any existing ``local`` repo entry.
+    local_idx = next(
+        (i for i, r in enumerate(repos) if isinstance(r, dict) and r.get("repo") == "local"),
+        None,
+    )
+
+    if local_idx is None:
+        # No local repo yet — prepend one with dev-stack hooks.
+        repos.insert(0, {"repo": "local", "hooks": ds_hook_dicts})
+    else:
+        local_repo = repos[local_idx]
+        existing_hooks: list[dict[str, Any]] = list(local_repo.get("hooks") or [])
+        # Keep user hooks (those without the dev-stack- id prefix).
+        user_hooks = [
+            h for h in existing_hooks
+            if isinstance(h, dict) and not str(h.get("id", "")).startswith("dev-stack-")
+        ]
+        repos[local_idx] = {**local_repo, "hooks": ds_hook_dicts + user_hooks}
+
+    existing["repos"] = repos
+    new_text = yaml.dump(existing, default_flow_style=False, sort_keys=False)
+
+    if new_text == existing_text:
+        return False
+
+    config_dest.write_text(new_text, encoding="utf-8")
+    return True
 
 
 class HooksModule(ModuleBase):
@@ -85,12 +151,11 @@ class HooksModule(ModuleBase):
 
         self._copy_with_permission(script_template, script_dest, 0o755, force, created, modified)
 
-        # Programmatic generation of .pre-commit-config.yaml via managed section
+        # .pre-commit-config.yaml: YAML-aware merge keeps user hooks intact.
         hooks = _build_hook_list()
-        rendered = _render_pre_commit_config(hooks)
         config_dest = self.repo_root / ".pre-commit-config.yaml"
         existed = config_dest.exists()
-        changed = write_managed_section(config_dest, "HOOKS", rendered)
+        changed = _write_pre_commit_config(config_dest, hooks)
         if changed:
             (modified if existed else created).append(config_dest)
 

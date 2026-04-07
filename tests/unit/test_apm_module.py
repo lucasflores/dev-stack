@@ -48,6 +48,39 @@ class TestCheckApmCli:
             assert ok is False
             assert "below minimum" in msg.lower()
 
+    def test_apm_ansi_decorated_version(self, apm: APMModule) -> None:
+        with patch("shutil.which", return_value="/usr/local/bin/apm"), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["apm", "--version"], returncode=0,
+                stdout="\x1b[1m0.9.0\x1b[0m\n", stderr=""
+            )
+            ok, msg = apm._check_apm_cli()
+            assert ok is True
+            assert "0.9.0" in msg
+
+    def test_apm_rich_box_drawing_version(self, apm: APMModule) -> None:
+        with patch("shutil.which", return_value="/usr/local/bin/apm"), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["apm", "--version"], returncode=0,
+                stdout="╭─ apm v0.9.0 ─╮\n", stderr=""
+            )
+            ok, msg = apm._check_apm_cli()
+            assert ok is True
+            assert "0.9.0" in msg
+
+    def test_apm_no_semver_match(self, apm: APMModule) -> None:
+        with patch("shutil.which", return_value="/usr/local/bin/apm"), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["apm", "--version"], returncode=0,
+                stdout="apm (no version)\n", stderr=""
+            )
+            ok, msg = apm._check_apm_cli()
+            assert ok is False
+            assert "could not parse" in msg.lower()
+
 
 # ── _bootstrap_manifest ─────────────────────────────────────────────
 

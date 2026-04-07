@@ -162,6 +162,8 @@ class APMModule(ModuleBase):
 
     def _check_apm_cli(self) -> tuple[bool, str]:
         """Verify APM binary exists on PATH and meets minimum version."""
+        import re as _re
+
         apm_path = shutil.which("apm")
         if apm_path is None:
             return False, "APM CLI not found on PATH — install from https://github.com/microsoft/apm"
@@ -173,9 +175,15 @@ class APMModule(ModuleBase):
                 text=True,
                 timeout=10,
             )
-            version_str = result.stdout.strip().split()[-1] if result.stdout.strip() else ""
-            if not version_str:
+            raw = result.stdout.strip()
+            if not raw:
                 return False, "Could not determine APM CLI version"
+            # FR-003: Strip ANSI escape sequences, then extract semver pattern
+            stripped = _re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw)
+            match = _re.search(r'\d+\.\d+\.\d+', stripped)
+            if not match:
+                return False, f"Could not parse version from APM output: {raw!r}"
+            version_str = match.group(0)
             detected = Version(version_str)
             minimum = Version(self.MIN_APM_VERSION)
             if detected < minimum:

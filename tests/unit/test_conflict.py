@@ -130,3 +130,54 @@ def test_resolve_conflicts_merge_cancelled(monkeypatch, tmp_path) -> None:
     assert file_path in skip_map
     assert not merge_map
     assert blocking.resolution == "skipped"
+
+
+# ── is_greenfield_uv_package (FR-002) ───────────────────────────────
+
+_GREENFIELD_PYPROJECT = """\
+[project]
+name = "myproject"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["uv_build>=0.7.2,<0.8"]
+build-backend = "uv_build"
+"""
+
+
+class TestIsGreenfieldUvPackage:
+    """Tests for root-level Python source detection in greenfield classification."""
+
+    def test_truly_empty_repo_is_greenfield(self, tmp_path) -> None:
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(_GREENFIELD_PYPROJECT)
+        # No .py files at root — still greenfield
+        assert conflict.is_greenfield_uv_package(pyproject) is True
+
+    def test_root_py_file_makes_brownfield(self, tmp_path) -> None:
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(_GREENFIELD_PYPROJECT)
+        (tmp_path / "main.py").write_text("print('hello')")
+        assert conflict.is_greenfield_uv_package(pyproject) is False
+
+    def test_root_package_dir_makes_brownfield(self, tmp_path) -> None:
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(_GREENFIELD_PYPROJECT)
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        assert conflict.is_greenfield_uv_package(pyproject) is False
+
+    def test_venv_and_pycache_excluded(self, tmp_path) -> None:
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(_GREENFIELD_PYPROJECT)
+        # .venv and __pycache__ should NOT trigger brownfield
+        venv = tmp_path / ".venv"
+        venv.mkdir()
+        (venv / "activate.py").write_text("")
+        cache = tmp_path / "__pycache__"
+        cache.mkdir()
+        (cache / "mod.cpython-312.pyc").write_text("")
+        assert conflict.is_greenfield_uv_package(pyproject) is True

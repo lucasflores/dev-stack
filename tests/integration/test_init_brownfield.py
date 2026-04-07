@@ -43,3 +43,21 @@ def test_brownfield_docs_conflict_detected() -> None:
         result = runner.invoke(cli, ["--dry-run", "init"])
         assert result.exit_code == 0, result.output
         assert "Dry run summary" in result.output
+
+
+def test_brownfield_json_init_produces_valid_json() -> None:
+    """FR-007: --json init should produce parseable JSON output."""
+    import json
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".pre-commit-config.yaml").write_text("user config\n", encoding="utf-8")
+
+        result = runner.invoke(cli, ["--json", "--dry-run", "init"])
+        assert result.exit_code == 0, result.output
+        # Every non-empty line should be valid JSON
+        for line in result.output.strip().splitlines():
+            line = line.strip()
+            if line:
+                data = json.loads(line)
+                assert isinstance(data, dict)

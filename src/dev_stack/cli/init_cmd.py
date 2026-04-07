@@ -164,6 +164,19 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
                     click.echo(f"Warning: {msg}", err=True)
         # TODO(012): Re-enable when a dedicated secrets module is added to _MODULE_REGISTRY
         _ensure_gitignore_managed_section(repo_root)
+        # FR-004: Write brownfield-init marker for first-commit auto-format
+        if not is_greenfield:
+            marker_dir = repo_root / ".dev-stack"
+            marker_dir.mkdir(parents=True, exist_ok=True)
+            (marker_dir / "brownfield-init").touch()
+        # FR-005: Detect and offer to migrate requirements.txt
+        if not is_greenfield:
+            _detect_and_migrate_requirements(
+                repo_root, interactive=not ctx.json_output, json_output=ctx.json_output
+            )
+        # FR-006: Detect root-level packages and recommend src/ layout
+        if not is_greenfield:
+            _detect_root_packages(repo_root, json_output=ctx.json_output)
         if should_write_manifest:
             manifest.rollback_ref = rollback_ref
             write_manifest(manifest, manifest_path)
@@ -182,6 +195,96 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
 def _install_modules(modules: Sequence[ModuleBase], force: bool) -> None:
     for module in modules:
         module.install(force=force)
+
+
+def _detect_and_migrate_requirements(repo_root: Path, interactive: bool, json_output: bool) -> None:
+    """FR-005: Detect requirements.txt and offer to merge into pyproject.toml."""
+    import tomllib
+
+    import tomli_w
+    from packaging.requirements import InvalidRequirement, Requirement
+
+    req_path = repo_root / "requirements.txt"
+    if not req_path.exists():
+        return
+
+    deps: list[str] = []
+    for raw_line in req_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("-e") or "://" in line:
+            continue
+        try:
+            Requirement(line)
+            deps.append(line)
+        except InvalidRequirement:
+            continue
+
+    if not deps:
+        return
+
+    pyproject_path = repo_root / "pyproject.toml"
+    if not pyproject_path.exists():
+        return
+
+    if json_output:
+        click.echo(json.dumps({"info": "requirements_detected", "dependencies": deps}))
+    else:
+        click.echo(f"Found {len(deps)} dependencies in requirements.txt:")
+        for dep in deps:
+            click.echo(f"  - {dep}")
+
+    if not interactive:
+        msg = "Non-interactive mode — skipping requirements.txt merge. Merge manually with: uv add " + " ".join(deps)
+        if json_output:
+            click.echo(json.dumps({"warning": msg}))
+        else:
+            click.echo(f"Warning: {msg}", err=True)
+        return
+
+    if not click.confirm("Merge these into pyproject.toml [project.dependencies]?", default=True):
+        return
+
+    with open(pyproject_path, "rb") as f:
+        data = tomllib.load(f)
+
+    project = data.setdefault("project", {})
+    existing = project.get("dependencies", [])
+    existing_names = {Requirement(d).name.lower() for d in existing}
+    added = []
+    for dep in deps:
+        if Requirement(dep).name.lower() not in existing_names:
+            existing.append(dep)
+            added.append(dep)
+    project["dependencies"] = existing
+
+    with open(pyproject_path, "wb") as f:
+        tomli_w.dump(data, f)
+
+    if json_output:
+        click.echo(json.dumps({"info": "requirements_merged", "added": added}))
+    else:
+        click.echo(f"Merged {len(added)} new dependencies into pyproject.toml")
+
+
+def _detect_root_packages(repo_root: Path, json_output: bool) -> None:
+    """FR-006: Detect root-level Python packages and recommend src/ layout migration."""
+    from ..modules.uv_project import scan_root_python_sources
+
+    has_python, packages = scan_root_python_sources(repo_root)
+    if not has_python or not packages:
+        return
+
+    if json_output:
+        click.echo(json.dumps({
+            "info": "root_packages_detected",
+            "packages": packages,
+            "recommendation": "Consider migrating to src/ layout",
+        }))
+    else:
+        click.echo(f"Detected {len(packages)} root-level Python package(s):")
+        for pkg in packages:
+            click.echo(f"  - {pkg}  →  mv {pkg}/ src/{pkg}/")
+        click.echo("Recommendation: migrate to src/ layout for proper uv/mypy integration.")
 
 
 def _generate_secrets_baseline(repo_root: Path) -> None:

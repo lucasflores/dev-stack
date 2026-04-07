@@ -282,3 +282,124 @@ def test_infra_sync_ignores_pre_commit_config_yaml(repo_root: Path) -> None:
 
     assert result.status == StageStatus.PASS
     assert ".pre-commit-config.yaml" not in (result.output or "")
+
+
+# ---------------------------------------------------------------------------
+# T013 / FR-004: Auto-format on brownfield first commit
+# ---------------------------------------------------------------------------
+
+
+class TestBrownfieldAutoFormat:
+    """Lint stage auto-formats when .dev-stack/brownfield-init marker is present."""
+
+    def test_auto_format_runs_when_marker_present(self, monkeypatch, repo_root: Path) -> None:
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        commands_run: list[tuple[str, ...]] = []
+        original_run = _execute_lint_stage.__module__
+
+        def fake_run_command(cmd, cwd):
+            commands_run.append(cmd)
+            return True, "ok"
+
+        monkeypatch.setattr("dev_stack.pipeline.stages._run_command", fake_run_command)
+
+        marker_dir = repo_root / ".dev-stack"
+        marker_dir.mkdir(parents=True)
+        marker = marker_dir / "brownfield-init"
+        marker.touch()
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_lint_stage(context)
+
+        # Auto-format should have run first
+        assert ("ruff", "format", ".") in commands_run
+        # Marker should be deleted
+        assert not marker.exists()
+        assert result.status == StageStatus.PASS
+
+    def test_no_auto_format_without_marker(self, monkeypatch, repo_root: Path) -> None:
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        commands_run: list[tuple[str, ...]] = []
+
+        def fake_run_command(cmd, cwd):
+            commands_run.append(cmd)
+            return True, "ok"
+
+        monkeypatch.setattr("dev_stack.pipeline.stages._run_command", fake_run_command)
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_lint_stage(context)
+
+        # Auto-format should NOT have run
+        assert ("ruff", "format", ".") not in commands_run
+        # Normal check commands should have run
+        assert ("ruff", "format", "--check", ".") in commands_run
+        assert result.status == StageStatus.PASS
+
+    def test_marker_deleted_after_auto_format(self, monkeypatch, repo_root: Path) -> None:
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._run_command", lambda cmd, cwd: (True, "ok")
+        )
+
+        marker_dir = repo_root / ".dev-stack"
+        marker_dir.mkdir(parents=True)
+        marker = marker_dir / "brownfield-init"
+        marker.touch()
+
+        context = StageContext(repo_root=repo_root)
+        _execute_lint_stage(context)
+
+        assert not marker.exists(), "brownfield-init marker should be consumed after auto-format"
+
+
+# ---------------------------------------------------------------------------
+# T024 / FR-008: Mypy root-package warning
+# ---------------------------------------------------------------------------
+
+
+class TestMypyRootPackageWarning:
+    """Typecheck stage warns about root-level packages outside src/."""
+
+    def test_warning_when_root_packages_exist(self, monkeypatch, repo_root: Path) -> None:
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._run_command", lambda cmd, cwd: (True, "Success: no issues")
+        )
+        # Create src/ so the stage doesn't skip
+        (repo_root / "src").mkdir()
+        # Create a root-level package
+        pkg = repo_root / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_typecheck_stage(context)
+
+        assert result.status == StageStatus.PASS
+        assert "mypkg" in result.output
+        assert "not covered by mypy" in result.output
+
+    def test_no_warning_when_all_packages_in_src(self, monkeypatch, repo_root: Path) -> None:
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._run_command", lambda cmd, cwd: (True, "Success: no issues")
+        )
+        (repo_root / "src").mkdir()
+        # No root-level packages
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_typecheck_stage(context)
+
+        assert result.status == StageStatus.PASS
+        assert "not covered by mypy" not in (result.output or "")

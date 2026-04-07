@@ -108,7 +108,7 @@ dev-stack --dry-run init   # preview what will change
 dev-stack init             # apply
 ```
 
-- The first commit after `dev-stack init` passes all pre-commit hooks automatically — no `--no-verify` needed.
+- The first commit after `dev-stack init` passes all pre-commit hooks automatically — no `--no-verify` needed. For brownfield repos, the first commit includes an automatic `ruff format .` pass to reformat pre-existing code; subsequent commits are hard-gated normally.
 - Set `DEV_STACK_AGENT=none` to skip agent detection entirely, or `DEV_STACK_AGENT=<cli>` to override auto-detection (`claude` → `gh copilot` → `cursor`).
 - Pass `--modules hooks,visualization` (or any subset) to control which modules are installed.
 

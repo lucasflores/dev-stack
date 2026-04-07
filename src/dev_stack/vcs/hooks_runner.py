@@ -54,8 +54,10 @@ def run_commit_msg_hook(msg_file_path: str) -> int:
 
         message = msg_path.read_text(encoding="utf-8")
 
-        # Strip comment lines (git default comment char is '#')
-        lines = [ln for ln in message.splitlines() if not ln.startswith("#")]
+        # Strip git comment lines only (lines starting with "# " or bare "#").
+        # Preserve markdown headers (##, ###, etc.) needed by UC5.
+        import re
+        lines = [ln for ln in message.splitlines() if not re.match(r"^# |^#$", ln)]
         clean_message = "\n".join(lines).strip()
 
         if not clean_message:

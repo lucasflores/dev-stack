@@ -40,6 +40,14 @@ def is_greenfield_uv_package(pyproject_path: Path) -> bool:
     if "tool" in data:
         return False
 
+    # FR-002: Check for pre-existing Python sources at repo root (depth 1).
+    from ..modules.uv_project import scan_root_python_sources
+
+    repo_root = pyproject_path.parent
+    has_python, _packages = scan_root_python_sources(repo_root)
+    if has_python:
+        return False
+
     return True
 
 

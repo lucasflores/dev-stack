@@ -214,6 +214,11 @@ def _execute_lint_stage(context: StageContext) -> StageResult:
             duration_ms=_elapsed_ms(start),
             skipped_reason="ruff not installed in project venv — run 'uv sync --extra dev --extra docs' to install",
         )
+    # FR-004: Auto-format on first brownfield commit
+    marker = context.repo_root / ".dev-stack" / "brownfield-init"
+    if marker.exists():
+        _run_command(("ruff", "format", "."), context.repo_root)
+        marker.unlink(missing_ok=True)
     outputs: list[str] = []
     for command in (("ruff", "format", "--check", "."), ("ruff", "check", ".")):
         success, output = _run_command(command, context.repo_root)
@@ -391,16 +396,29 @@ def _execute_typecheck_stage(context: StageContext) -> StageResult:
             duration_ms=_elapsed_ms(start),
             skipped_reason="src/ directory not found",
         )
+    # FR-008: Warn about root-level packages outside src/ that mypy won't cover
+    from ..modules.uv_project import scan_root_python_sources
+
+    _has_root_py, root_packages = scan_root_python_sources(context.repo_root)
+    root_warning = ""
+    if root_packages:
+        names = ", ".join(root_packages)
+        root_warning = (
+            f"Warning: {len(root_packages)} root-level package(s) outside src/ "
+            f"not covered by mypy: {names}\n"
+            "Consider migrating to src/ layout: mv <pkg>/ src/<pkg>/\n\n"
+        )
     success, output = _run_command(
         ("python3", "-m", "mypy", "src/"),
         context.repo_root,
     )
+    combined_output = root_warning + (output or "")
     return StageResult(
         stage_name="typecheck",
         status=StageStatus.PASS if success else StageStatus.FAIL,
         failure_mode=FailureMode.HARD,
         duration_ms=_elapsed_ms(start),
-        output=output,
+        output=combined_output,
     )
 
 

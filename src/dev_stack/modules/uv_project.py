@@ -41,6 +41,33 @@ def _normalize_name(name: str) -> str:
     return result
 
 
+# Directories excluded from root-level Python source scanning
+_SCAN_EXCLUDE_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules", ".tox"})
+
+
+def scan_root_python_sources(repo_root: Path) -> tuple[bool, list[str]]:
+    """Scan the repo root at depth 1 for Python files and packages.
+
+    Returns ``(has_python_sources, package_names)`` where *package_names*
+    lists directories that contain ``__init__.py``.
+    """
+    has_py = False
+    packages: list[str] = []
+    try:
+        entries = list(repo_root.iterdir())
+    except OSError:
+        return False, []
+    for entry in entries:
+        if entry.name in _SCAN_EXCLUDE_DIRS:
+            continue
+        if entry.is_file() and entry.suffix == ".py":
+            has_py = True
+        elif entry.is_dir() and (entry / "__init__.py").is_file():
+            has_py = True
+            packages.append(entry.name)
+    return has_py, sorted(packages)
+
+
 def _run_uv_init(repo_root: Path, pkg_name: str) -> tuple[bool, str]:
     """Shell out to ``uv init --package --name <name>``.
 

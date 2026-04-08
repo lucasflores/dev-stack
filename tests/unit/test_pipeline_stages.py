@@ -262,14 +262,14 @@ class TestRemediationHints:
 
 
 def test_typecheck_skip_when_src_missing(monkeypatch, repo_root: Path) -> None:
-    """Typecheck stage skips gracefully when src/ directory does not exist."""
+    """Typecheck stage skips gracefully when no packages are found."""
     monkeypatch.setattr(
         "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
     )
     context = StageContext(repo_root=repo_root)
     result = _execute_typecheck_stage(context)
     assert result.status == StageStatus.SKIP
-    assert result.skipped_reason == "src/ directory not found"
+    assert result.skipped_reason == "no Python packages found"
 
 
 def test_infra_sync_ignores_pre_commit_config_yaml(repo_root: Path) -> None:
@@ -374,9 +374,11 @@ class TestMypyRootPackageWarning:
         monkeypatch.setattr(
             "dev_stack.pipeline.stages._run_command", lambda cmd, cwd: (True, "Success: no issues")
         )
-        # Create src/ so the stage doesn't skip
-        (repo_root / "src").mkdir()
-        # Create a root-level package
+        # Create src/ with a package so layout detects SRC
+        src_pkg = repo_root / "src" / "main_pkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").write_text("")
+        # Create a root-level package that won't be covered by mypy
         pkg = repo_root / "mypkg"
         pkg.mkdir()
         (pkg / "__init__.py").write_text("")
@@ -395,8 +397,10 @@ class TestMypyRootPackageWarning:
         monkeypatch.setattr(
             "dev_stack.pipeline.stages._run_command", lambda cmd, cwd: (True, "Success: no issues")
         )
-        (repo_root / "src").mkdir()
-        # No root-level packages
+        # Create src/ with a package and no root-level packages
+        src_pkg = repo_root / "src" / "my_pkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").write_text("")
 
         context = StageContext(repo_root=repo_root)
         result = _execute_typecheck_stage(context)

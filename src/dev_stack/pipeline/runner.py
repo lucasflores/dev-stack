@@ -21,6 +21,7 @@ from .stages import (
     StageStatus,
     build_pipeline_stages,
 )
+from ..layout import detect_package_layout
 from ..manifest import ISO_FORMAT
 
 DEFAULT_PARALLEL_THRESHOLD = 500
@@ -161,6 +162,10 @@ class PipelineRunner:
             agent_bridge=self.agent_bridge,
             completed_results=[],
             hook_context=hook_context,
+            package_layout=detect_package_layout(
+                self.repo_root,
+                self.manifest.to_dict() if self.manifest else None,
+            ),
         )
         results: list[StageResult] = []
         aborted_stage: str | None = None

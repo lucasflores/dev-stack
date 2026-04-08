@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from ..manifest import StackManifest
+from ..layout import PackageLayout
 from .agent_bridge import AgentBridge
 from .commit_format import TrailerData, upsert_trailers
 from .response_parser import extract_commit_message
@@ -69,6 +70,7 @@ class StageContext:
     completed_results: list[StageResult] | None = None
     hook_context: str | None = None
     dry_run: bool = False
+    package_layout: PackageLayout | None = None
 
     def without_agent(self) -> StageContext:
         """Return a shallow copy without the agent bridge for parallel execution."""
@@ -81,6 +83,7 @@ class StageContext:
             completed_results=self.completed_results,
             hook_context=self.hook_context,
             dry_run=self.dry_run,
+            package_layout=self.package_layout,
         )
 
 
@@ -387,29 +390,37 @@ def _execute_typecheck_stage(context: StageContext) -> StageResult:
             duration_ms=_elapsed_ms(start),
             skipped_reason="mypy not installed in project venv — run 'uv sync --extra dev --extra docs' to install",
         )
-    src_dir = context.repo_root / "src"
-    if not src_dir.exists():
+
+    from ..layout import detect_package_layout
+
+    layout = context.package_layout or detect_package_layout(context.repo_root)
+
+    if not layout.package_names:
         return StageResult(
             stage_name="typecheck",
             status=StageStatus.SKIP,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            skipped_reason="src/ directory not found",
+            skipped_reason="no Python packages found",
         )
-    # FR-008: Warn about root-level packages outside src/ that mypy won't cover
-    from ..modules.uv_project import scan_root_python_sources
 
-    _has_root_py, root_packages = scan_root_python_sources(context.repo_root)
+    # FR-008: Warn about root-level packages outside src/ that mypy won't cover
+    from ..layout import scan_root_python_sources
+
     root_warning = ""
-    if root_packages:
-        names = ", ".join(root_packages)
-        root_warning = (
-            f"Warning: {len(root_packages)} root-level package(s) outside src/ "
-            f"not covered by mypy: {names}\n"
-            "Consider migrating to src/ layout: mv <pkg>/ src/<pkg>/\n\n"
-        )
+    if layout.package_root != Path("."):
+        _has_root_py, root_packages = scan_root_python_sources(context.repo_root)
+        if root_packages:
+            names = ", ".join(root_packages)
+            root_warning = (
+                f"Warning: {len(root_packages)} root-level package(s) outside "
+                f"{layout.package_root}/ not covered by mypy: {names}\n"
+                "Consider migrating to src/ layout: mv <pkg>/ src/<pkg>/\n\n"
+            )
+
+    targets = " ".join(str(layout.package_root / pkg) for pkg in layout.package_names)
     success, output = _run_command(
-        ("python3", "-m", "mypy", "src/"),
+        ("python3", "-m", "mypy", *targets.split()),
         context.repo_root,
     )
     combined_output = root_warning + (output or "")
@@ -449,14 +460,16 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
         )
 
     # Detect source package
-    pkg_name = _detect_src_package(context.repo_root)
-    if pkg_name is None:
+    from ..layout import detect_package_layout
+
+    layout = context.package_layout or detect_package_layout(context.repo_root)
+    if not layout.package_names:
         return StageResult(
             stage_name="docs-api",
             status=StageStatus.PASS,
             failure_mode=FailureMode.HARD,
             duration_ms=_elapsed_ms(start),
-            output="No Python packages found in src/, nothing to document",
+            output="No Python packages found, nothing to document",
         )
 
     outputs: list[str] = []
@@ -464,33 +477,35 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
     # Deterministic build environment
     env = {**os.environ, "SOURCE_DATE_EPOCH": "0"}
 
-    # Step 1: Generate .rst stubs via sphinx-apidoc
-    apidoc_cmd = (
-        "python3",
-        "-m",
-        "sphinx.ext.apidoc",
-        "-o",
-        "docs/api",
-        f"src/{pkg_name}",
-        "-f",
-        "--module-first",
-        "-e",
-    )
-    try:
-        apidoc_result = subprocess.run(
-            apidoc_cmd,
-            cwd=str(context.repo_root),
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
+    # Step 1: Generate .rst stubs via sphinx-apidoc for each package
+    for pkg_name in layout.package_names:
+        apidoc_target = str(layout.package_root / pkg_name)
+        apidoc_cmd = (
+            "python3",
+            "-m",
+            "sphinx.ext.apidoc",
+            "-o",
+            "docs/api",
+            apidoc_target,
+            "-f",
+            "--module-first",
+            "-e",
         )
-        apidoc_output = "\n".join(
-            p.strip() for p in (apidoc_result.stdout, apidoc_result.stderr) if p.strip()
-        )
-        outputs.append(f"$ {' '.join(apidoc_cmd)}\n{apidoc_output or 'ok'}")
-    except FileNotFoundError:
-        outputs.append("sphinx.ext.apidoc not found")
+        try:
+            apidoc_result = subprocess.run(
+                apidoc_cmd,
+                cwd=str(context.repo_root),
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+            apidoc_output = "\n".join(
+                p.strip() for p in (apidoc_result.stdout, apidoc_result.stderr) if p.strip()
+            )
+            outputs.append(f"$ {' '.join(apidoc_cmd)}\n{apidoc_output or 'ok'}")
+        except FileNotFoundError:
+            outputs.append("sphinx.ext.apidoc not found")
 
     # Step 2: Build HTML
     build_cmd = (
@@ -958,23 +973,6 @@ def _execute_commit_stage(context: StageContext) -> StageResult:
             f" to {output_path.relative_to(context.repo_root)}"
         ),
     )
-
-
-def _detect_src_package(repo_root: Path) -> str | None:
-    """Find the first Python package under ``src/``.
-
-    Scans ``repo_root / "src"`` for subdirectories containing an
-    ``__init__.py`` file.  Returns the first match sorted alphabetically
-    for determinism.  Returns ``None`` if no package is found or ``src/``
-    does not exist.
-    """
-    src_dir = repo_root / "src"
-    if not src_dir.is_dir():
-        return None
-    candidates = sorted(
-        d.name for d in src_dir.iterdir() if d.is_dir() and (d / "__init__.py").is_file()
-    )
-    return candidates[0] if candidates else None
 
 
 def _tool_available_in_venv(tool: str, repo_root: Path) -> bool:

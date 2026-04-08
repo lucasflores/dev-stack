@@ -89,14 +89,14 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
     # FR-004/FR-005: Mark uv init --package files as greenfield predecessors
     is_greenfield = is_greenfield_uv_package(repo_root / "pyproject.toml")
     if is_greenfield:
-        src_dir = repo_root / "src"
-        pkg_names = sorted(
-            d.name for d in src_dir.iterdir()
-            if d.is_dir() and (d / "__init__.py").is_file()
-        ) if src_dir.is_dir() else []
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(repo_root)
+        pkg_names = layout.package_names
         predecessor_suffixes = {"pyproject.toml", ".python-version", "README.md"}
         for pkg_name in pkg_names:
-            predecessor_suffixes.add(f"src/{pkg_name}/__init__.py")
+            init_rel = str(layout.package_root / pkg_name / "__init__.py")
+            predecessor_suffixes.add(init_rel)
         for conflict in conflict_report.conflicts:
             try:
                 rel = str(conflict.path.relative_to(repo_root))

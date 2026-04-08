@@ -169,6 +169,7 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
             marker_dir = repo_root / ".dev-stack"
             marker_dir.mkdir(parents=True, exist_ok=True)
             (marker_dir / "brownfield-init").touch()
+            _set_brownfield_pipeline_defaults(repo_root)
         # FR-005: Detect and offer to migrate requirements.txt
         if not is_greenfield:
             _detect_and_migrate_requirements(
@@ -195,6 +196,31 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
 def _install_modules(modules: Sequence[ModuleBase], force: bool) -> None:
     for module in modules:
         module.install(force=force)
+
+
+def _set_brownfield_pipeline_defaults(repo_root: Path) -> None:
+    """Set ``[tool.dev-stack.pipeline] strict_docs = false`` for brownfield repos.
+
+    Brownfield projects typically have pre-existing Sphinx warnings that
+    should not be treated as fatal errors.  This writes the flag into
+    ``pyproject.toml`` so the docs-api pipeline stage and generated
+    Makefiles omit ``-W``.
+    """
+    import tomllib
+
+    import tomli_w
+
+    pyproject = repo_root / "pyproject.toml"
+    if not pyproject.exists():
+        return
+    with open(pyproject, "rb") as fh:
+        data = tomllib.load(fh)
+
+    pipeline = data.setdefault("tool", {}).setdefault("dev-stack", {}).setdefault("pipeline", {})
+    if "strict_docs" not in pipeline:
+        pipeline["strict_docs"] = False
+        with open(pyproject, "wb") as fh:
+            tomli_w.dump(data, fh)
 
 
 def _detect_and_migrate_requirements(repo_root: Path, interactive: bool, json_output: bool) -> None:

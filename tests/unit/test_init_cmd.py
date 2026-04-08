@@ -1,4 +1,4 @@
-"""Unit tests for init_cmd helper functions (FR-005, FR-006)."""
+"""Unit tests for init_cmd helper functions (FR-005, FR-006, 018)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,7 +6,11 @@ from pathlib import Path
 import click
 import pytest
 
-from dev_stack.cli.init_cmd import _detect_and_migrate_requirements, _detect_root_packages
+from dev_stack.cli.init_cmd import (
+    _detect_and_migrate_requirements,
+    _detect_root_packages,
+    _set_brownfield_pipeline_defaults,
+)
 
 
 # ── FR-005: _detect_and_migrate_requirements ──────────────────────────
@@ -158,3 +162,62 @@ class TestDetectRootPackages:
         data = _json.loads(captured.out)
         assert data["info"] == "root_packages_detected"
         assert "eval" in data["packages"]
+
+
+# ── 018: _set_brownfield_pipeline_defaults ─────────────────────────────
+
+
+class TestSetBrownfieldPipelineDefaults:
+    """Tests for strict_docs=false injection into pyproject.toml."""
+
+    def test_sets_strict_docs_false(self, tmp_path: Path) -> None:
+        import tomllib
+
+        import tomli_w
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps({"project": {"name": "test"}}))
+
+        _set_brownfield_pipeline_defaults(tmp_path)
+
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        assert data["tool"]["dev-stack"]["pipeline"]["strict_docs"] is False
+
+    def test_preserves_existing_pipeline_config(self, tmp_path: Path) -> None:
+        import tomllib
+
+        import tomli_w
+
+        existing = {
+            "tool": {"dev-stack": {"pipeline": {"visualize": False}}},
+            "project": {"name": "test"},
+        }
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps(existing))
+
+        _set_brownfield_pipeline_defaults(tmp_path)
+
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        assert data["tool"]["dev-stack"]["pipeline"]["visualize"] is False
+        assert data["tool"]["dev-stack"]["pipeline"]["strict_docs"] is False
+
+    def test_does_not_overwrite_explicit_true(self, tmp_path: Path) -> None:
+        import tomllib
+
+        import tomli_w
+
+        existing = {"tool": {"dev-stack": {"pipeline": {"strict_docs": True}}}}
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps(existing))
+
+        _set_brownfield_pipeline_defaults(tmp_path)
+
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        assert data["tool"]["dev-stack"]["pipeline"]["strict_docs"] is True
+
+    def test_noop_when_no_pyproject(self, tmp_path: Path) -> None:
+        # Should not raise
+        _set_brownfield_pipeline_defaults(tmp_path)

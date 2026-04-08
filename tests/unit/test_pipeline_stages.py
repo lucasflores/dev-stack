@@ -407,3 +407,120 @@ class TestMypyRootPackageWarning:
 
         assert result.status == StageStatus.PASS
         assert "not covered by mypy" not in (result.output or "")
+
+
+# ---------------------------------------------------------------------------
+# 018: Sphinx -W brownfield softening
+# ---------------------------------------------------------------------------
+
+
+class TestIsStrictDocs:
+    """_is_strict_docs reads [tool.dev-stack.pipeline] strict_docs."""
+
+    def test_defaults_to_true_when_no_pyproject(self, repo_root: Path) -> None:
+        from dev_stack.pipeline.stages import _is_strict_docs
+
+        context = StageContext(repo_root=repo_root)
+        assert _is_strict_docs(context) is True
+
+    def test_defaults_to_true_when_no_pipeline_section(self, repo_root: Path) -> None:
+        from dev_stack.pipeline.stages import _is_strict_docs
+
+        import tomli_w
+
+        pyproject = repo_root / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps({"project": {"name": "test"}}))
+        context = StageContext(repo_root=repo_root)
+        assert _is_strict_docs(context) is True
+
+    def test_reads_false(self, repo_root: Path) -> None:
+        from dev_stack.pipeline.stages import _is_strict_docs
+
+        import tomli_w
+
+        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
+        (repo_root / "pyproject.toml").write_text(tomli_w.dumps(data))
+        context = StageContext(repo_root=repo_root)
+        assert _is_strict_docs(context) is False
+
+
+class TestDocsApiStrictDocs:
+    """Docs-api stage respects strict_docs config."""
+
+    def test_greenfield_includes_w_flag(self, monkeypatch, repo_root: Path) -> None:
+        """Default (greenfield): sphinx build includes -W."""
+        import subprocess as sp
+
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        docs_dir = repo_root / "docs"
+        docs_dir.mkdir()
+        src_pkg = repo_root / "src" / "mypkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").touch()
+
+        captured_cmds: list[tuple] = []
+        original_run = sp.run
+
+        def fake_subprocess_run(cmd, **kwargs):
+            captured_cmds.append(tuple(cmd))
+
+            class FakeResult:
+                returncode = 0
+                stdout = "ok"
+                stderr = ""
+
+            return FakeResult()
+
+        monkeypatch.setattr(sp, "run", fake_subprocess_run)
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_docs_api_stage(context)
+
+        assert result.status == StageStatus.PASS
+        # Find the sphinx build command
+        build_cmds = [c for c in captured_cmds if "sphinx" in c and "-b" in c and "html" in c]
+        assert len(build_cmds) == 1
+        assert "-W" in build_cmds[0]
+
+    def test_brownfield_omits_w_flag(self, monkeypatch, repo_root: Path) -> None:
+        """Brownfield (strict_docs=false): sphinx build omits -W."""
+        import subprocess as sp
+
+        import tomli_w
+
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        docs_dir = repo_root / "docs"
+        docs_dir.mkdir()
+        src_pkg = repo_root / "src" / "mypkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").touch()
+
+        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
+        (repo_root / "pyproject.toml").write_text(tomli_w.dumps(data))
+
+        captured_cmds: list[tuple] = []
+
+        def fake_subprocess_run(cmd, **kwargs):
+            captured_cmds.append(tuple(cmd))
+
+            class FakeResult:
+                returncode = 0
+                stdout = "ok"
+                stderr = ""
+
+            return FakeResult()
+
+        monkeypatch.setattr(sp, "run", fake_subprocess_run)
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_docs_api_stage(context)
+
+        assert result.status == StageStatus.PASS
+        build_cmds = [c for c in captured_cmds if "sphinx" in c and "-b" in c and "html" in c]
+        assert len(build_cmds) == 1
+        assert "-W" not in build_cmds[0]
+        assert "--keep-going" not in build_cmds[0]

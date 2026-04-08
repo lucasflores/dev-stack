@@ -275,12 +275,20 @@ def _detect_and_migrate_requirements(repo_root: Path, interactive: bool, json_ou
 
     project = data.setdefault("project", {})
     existing = project.get("dependencies", [])
-    existing_names = {Requirement(d).name.lower() for d in existing}
+    if not isinstance(existing, list):
+        existing = [existing] if isinstance(existing, str) else []
+    existing_names: set[str] = set()
+    for d in existing:
+        try:
+            existing_names.add(Requirement(d).name.lower())
+        except InvalidRequirement:
+            continue
     added = []
     for dep in deps:
         if Requirement(dep).name.lower() not in existing_names:
             existing.append(dep)
             added.append(dep)
+            existing_names.add(Requirement(dep).name.lower())
     project["dependencies"] = existing
 
     with open(pyproject_path, "wb") as f:

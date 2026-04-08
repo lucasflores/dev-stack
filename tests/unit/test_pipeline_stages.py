@@ -297,7 +297,6 @@ class TestBrownfieldAutoFormat:
             "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
         )
         commands_run: list[tuple[str, ...]] = []
-        original_run = _execute_lint_stage.__module__
 
         def fake_run_command(cmd, cwd):
             commands_run.append(cmd)
@@ -357,6 +356,31 @@ class TestBrownfieldAutoFormat:
         _execute_lint_stage(context)
 
         assert not marker.exists(), "brownfield-init marker should be consumed after auto-format"
+
+    def test_auto_format_failure_preserves_marker(self, monkeypatch, repo_root: Path) -> None:
+        """When ruff format fails, the marker is preserved and stage returns FAIL."""
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+
+        def fake_run_command(cmd, cwd):
+            if cmd == ("ruff", "format", "."):
+                return False, "error: invalid syntax"
+            return True, "ok"
+
+        monkeypatch.setattr("dev_stack.pipeline.stages._run_command", fake_run_command)
+
+        marker_dir = repo_root / ".dev-stack"
+        marker_dir.mkdir(parents=True)
+        marker = marker_dir / "brownfield-init"
+        marker.touch()
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_lint_stage(context)
+
+        assert result.status == StageStatus.FAIL
+        assert marker.exists(), "marker should be preserved so auto-format retries next run"
+        assert "error: invalid syntax" in result.output
 
 
 # ---------------------------------------------------------------------------

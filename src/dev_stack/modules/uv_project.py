@@ -441,10 +441,13 @@ class UvProjectModule(ModuleBase):
     # ------------------------------------------------------------------
 
     def preview_files(self) -> dict[Path, str]:
-        from ..layout import LayoutStyle, detect_package_layout
+        from ..layout import detect_package_layout
 
         layout = detect_package_layout(self.repo_root, self.manifest)
-        pkg_name = self._detect_package_name() or _normalize_name(self.repo_root.resolve().name)
+        if layout.package_names:
+            pkg_name = layout.package_names[0]
+        else:
+            pkg_name = self._detect_package_name() or _normalize_name(self.repo_root.resolve().name)
         pkg_root_str = str(layout.package_root)
         files: dict[Path, str] = {}
 
@@ -499,10 +502,10 @@ class UvProjectModule(ModuleBase):
         tomli_w.dump(data_copy, buf)
         files[Path("pyproject.toml")] = buf.getvalue().decode("utf-8")
 
-        if layout.layout_style == LayoutStyle.FLAT:
+        if layout.package_root == Path("."):
             init_path = Path(f"{pkg_name}/__init__.py")
         else:
-            init_path = Path(f"src/{pkg_name}/__init__.py")
+            init_path = Path(f"{layout.package_root}/{pkg_name}/__init__.py")
         files[init_path] = f'"""Top-level package for {pkg_name}."""\n'
         files[Path("tests/__init__.py")] = ""
         files[Path("tests/test_placeholder.py")] = (

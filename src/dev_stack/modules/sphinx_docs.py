@@ -189,7 +189,7 @@ class SphinxDocsModule(ModuleBase):
         from ..layout import detect_package_layout
 
         layout = detect_package_layout(self.repo_root, self.manifest)
-        pkg_name = _detect_package_name(self.repo_root, self.manifest)
+        pkg_name = layout.package_names[0] if layout.package_names else _detect_package_name(self.repo_root, self.manifest)
         strict = _read_strict_docs(self.repo_root)
         created: list[Path] = []
         modified: list[Path] = []
@@ -272,7 +272,7 @@ class SphinxDocsModule(ModuleBase):
         from ..layout import detect_package_layout
 
         layout = detect_package_layout(self.repo_root, self.manifest)
-        pkg_name = _detect_package_name(self.repo_root, self.manifest)
+        pkg_name = layout.package_names[0] if layout.package_names else _detect_package_name(self.repo_root, self.manifest)
         strict = _read_strict_docs(self.repo_root)
         return {
             Path("docs/conf.py"): _render_conf_py(pkg_name, layout),

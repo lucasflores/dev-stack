@@ -219,10 +219,20 @@ def _execute_lint_stage(context: StageContext) -> StageResult:
         )
     # FR-004: Auto-format on first brownfield commit
     marker = context.repo_root / ".dev-stack" / "brownfield-init"
-    if marker.exists():
-        _run_command(("ruff", "format", "."), context.repo_root)
-        marker.unlink(missing_ok=True)
     outputs: list[str] = []
+    if marker.exists():
+        fmt_cmd = ("ruff", "format", ".")
+        fmt_ok, fmt_out = _run_command(fmt_cmd, context.repo_root)
+        outputs.append(f"$ {' '.join(fmt_cmd)}\n{fmt_out or 'ok'}")
+        if not fmt_ok:
+            return StageResult(
+                stage_name="lint",
+                status=StageStatus.FAIL,
+                failure_mode=FailureMode.HARD,
+                duration_ms=_elapsed_ms(start),
+                output="\n\n".join(outputs),
+            )
+        marker.unlink(missing_ok=True)
     for command in (("ruff", "format", "--check", "."), ("ruff", "check", ".")):
         success, output = _run_command(command, context.repo_root)
         label = " ".join(command)
@@ -418,9 +428,9 @@ def _execute_typecheck_stage(context: StageContext) -> StageResult:
                 "Consider migrating to src/ layout: mv <pkg>/ src/<pkg>/\n\n"
             )
 
-    targets = " ".join(str(layout.package_root / pkg) for pkg in layout.package_names)
+    target_paths = [str(layout.package_root / pkg) for pkg in layout.package_names]
     success, output = _run_command(
-        ("python3", "-m", "mypy", *targets.split()),
+        ("python3", "-m", "mypy", *target_paths),
         context.repo_root,
     )
     combined_output = root_warning + (output or "")

@@ -9,6 +9,26 @@ from ..layout import PackageLayout
 from .base import ModuleBase, ModuleResult, ModuleStatus
 
 # ---------------------------------------------------------------------------
+# Configuration helper
+# ---------------------------------------------------------------------------
+
+
+def _read_strict_docs(repo_root: Path) -> bool:
+    """Read ``[tool.dev-stack.pipeline] strict_docs`` from pyproject.toml.  Default: True."""
+    import tomllib
+
+    pyproject = repo_root / "pyproject.toml"
+    if not pyproject.exists():
+        return True
+    try:
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        return data.get("tool", {}).get("dev-stack", {}).get("pipeline", {}).get("strict_docs", True)
+    except Exception:
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Template renderers (T020)
 # ---------------------------------------------------------------------------
 
@@ -63,15 +83,26 @@ Indices and tables
 """
 
 
-def _render_makefile(pkg_name: str, layout: PackageLayout | None = None) -> str:
-    """Generate ``docs/Makefile`` with ``-W --keep-going`` flags."""
+def _render_makefile(
+    pkg_name: str,
+    layout: PackageLayout | None = None,
+    *,
+    strict_docs: bool = True,
+) -> str:
+    """Generate ``docs/Makefile``.
+
+    When *strict_docs* is True (greenfield default), ``-W --keep-going`` is
+    included so warnings are fatal.  Brownfield projects pass
+    ``strict_docs=False`` to avoid failing on pre-existing doc warnings.
+    """
     if layout is not None and layout.package_root == Path("."):
         apidoc_path = f"../{pkg_name}"
     else:
         root = layout.package_root if layout else Path("src")
         apidoc_path = f"../{root}/{pkg_name}"
+    sphinxopts = "-W --keep-going" if strict_docs else ""
     return f"""\
-SPHINXOPTS  ?= -W --keep-going
+SPHINXOPTS  ?= {sphinxopts}
 SOURCEDIR   = .
 BUILDDIR    = _build
 
@@ -159,6 +190,7 @@ class SphinxDocsModule(ModuleBase):
 
         layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = _detect_package_name(self.repo_root, self.manifest)
+        strict = _read_strict_docs(self.repo_root)
         created: list[Path] = []
         modified: list[Path] = []
 
@@ -169,7 +201,7 @@ class SphinxDocsModule(ModuleBase):
         targets = {
             docs_dir / "conf.py": _render_conf_py(pkg_name, layout),
             docs_dir / "index.rst": _render_index_rst(pkg_name),
-            docs_dir / "Makefile": _render_makefile(pkg_name, layout),
+            docs_dir / "Makefile": _render_makefile(pkg_name, layout, strict_docs=strict),
         }
 
         for dest, content in targets.items():
@@ -241,10 +273,11 @@ class SphinxDocsModule(ModuleBase):
 
         layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = _detect_package_name(self.repo_root, self.manifest)
+        strict = _read_strict_docs(self.repo_root)
         return {
             Path("docs/conf.py"): _render_conf_py(pkg_name, layout),
             Path("docs/index.rst"): _render_index_rst(pkg_name),
-            Path("docs/Makefile"): _render_makefile(pkg_name, layout),
+            Path("docs/Makefile"): _render_makefile(pkg_name, layout, strict_docs=strict),
         }
 
 

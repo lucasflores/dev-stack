@@ -508,17 +508,18 @@ def _execute_docs_api_stage(context: StageContext) -> StageResult:
             outputs.append("sphinx.ext.apidoc not found")
 
     # Step 2: Build HTML
-    build_cmd = (
+    strict = _is_strict_docs(context)
+    build_cmd_parts = [
         "python3",
         "-m",
         "sphinx",
         "-b",
         "html",
-        "-W",
-        "--keep-going",
-        "docs",
-        "docs/_build",
-    )
+    ]
+    if strict:
+        build_cmd_parts += ["-W", "--keep-going"]
+    build_cmd_parts += ["docs", "docs/_build"]
+    build_cmd = tuple(build_cmd_parts)
     try:
         build_result = subprocess.run(
             build_cmd,
@@ -707,6 +708,21 @@ LLM_API_KEY_VARS: tuple[str, ...] = (
 def _has_llm_api_key() -> bool:
     """Return True if any supported LLM provider API key is set in the environment."""
     return any(os.environ.get(key) for key in LLM_API_KEY_VARS)
+
+
+def _is_strict_docs(context: StageContext) -> bool:
+    """Check ``[tool.dev-stack.pipeline] strict_docs`` in pyproject.toml.  Default: True."""
+    import tomllib
+
+    pyproject = context.repo_root / "pyproject.toml"
+    if not pyproject.exists():
+        return True
+    try:
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        return data.get("tool", {}).get("dev-stack", {}).get("pipeline", {}).get("strict_docs", True)
+    except Exception:
+        return True
 
 
 def _is_visualization_enabled(context: StageContext) -> bool:

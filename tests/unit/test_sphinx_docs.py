@@ -47,6 +47,17 @@ class TestRenderMakefile:
         out = _render_makefile("mylib")
         assert "-W --keep-going" in out
 
+    def test_strict_docs_false_omits_w_flag(self) -> None:
+        out = _render_makefile("mylib", strict_docs=False)
+        assert "-W" not in out
+        assert "--keep-going" not in out
+        # Makefile must still have the SPHINXOPTS variable (possibly empty)
+        assert "SPHINXOPTS" in out
+
+    def test_strict_docs_true_includes_w_flag(self) -> None:
+        out = _render_makefile("mylib", strict_docs=True)
+        assert "-W --keep-going" in out
+
     def test_clean_target(self) -> None:
         out = _render_makefile("mylib")
         assert "clean:" in out
@@ -213,3 +224,93 @@ class TestSphinxDocsModulePreviewFiles:
         preview = module.preview_files()
 
         assert "coolpkg" in preview[Path("docs/conf.py")]
+
+
+# ---------------------------------------------------------------------------
+# _read_strict_docs + brownfield integration
+# ---------------------------------------------------------------------------
+
+
+class TestReadStrictDocs:
+    def test_defaults_to_true_when_no_pyproject(self, tmp_path: Path) -> None:
+        from dev_stack.modules.sphinx_docs import _read_strict_docs
+
+        assert _read_strict_docs(tmp_path) is True
+
+    def test_defaults_to_true_when_no_pipeline_section(self, tmp_path: Path) -> None:
+        from dev_stack.modules.sphinx_docs import _read_strict_docs
+
+        import tomli_w
+
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps({"project": {"name": "test"}}))
+        assert _read_strict_docs(tmp_path) is True
+
+    def test_reads_false_from_config(self, tmp_path: Path) -> None:
+        from dev_stack.modules.sphinx_docs import _read_strict_docs
+
+        import tomli_w
+
+        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps(data))
+        assert _read_strict_docs(tmp_path) is False
+
+    def test_reads_true_from_config(self, tmp_path: Path) -> None:
+        from dev_stack.modules.sphinx_docs import _read_strict_docs
+
+        import tomli_w
+
+        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": True}}}}
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps(data))
+        assert _read_strict_docs(tmp_path) is True
+
+
+class TestSphinxDocsModuleBrownfieldMakefile:
+    def test_install_brownfield_makefile_omits_w(self, tmp_path: Path) -> None:
+        """When strict_docs=false in pyproject.toml, installed Makefile omits -W."""
+        import tomli_w
+
+        pkg = tmp_path / "src" / "mypkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").touch()
+
+        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
+        (tmp_path / "pyproject.toml").write_text(tomli_w.dumps(data))
+
+        module = SphinxDocsModule(tmp_path, {})
+        result = module.install()
+        assert result.success is True
+
+        makefile = (tmp_path / "docs" / "Makefile").read_text(encoding="utf-8")
+        assert "-W" not in makefile
+
+    def test_install_greenfield_makefile_includes_w(self, tmp_path: Path) -> None:
+        """Default (no config) Makefile includes -W --keep-going."""
+        pkg = tmp_path / "src" / "mypkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").touch()
+
+        module = SphinxDocsModule(tmp_path, {})
+        result = module.install()
+        assert result.success is True
+
+        makefile = (tmp_path / "docs" / "Makefile").read_text(encoding="utf-8")
+        assert "-W --keep-going" in makefile
+
+    def test_preview_brownfield_makefile_omits_w(self, tmp_path: Path) -> None:
+        """Preview for brownfield project omits -W."""
+        import tomli_w
+
+        pkg = tmp_path / "src" / "mypkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").touch()
+
+        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
+        (tmp_path / "pyproject.toml").write_text(tomli_w.dumps(data))
+
+        module = SphinxDocsModule(tmp_path, {})
+        preview = module.preview_files()
+        makefile_content = preview[Path("docs/Makefile")]
+        assert "-W" not in makefile_content

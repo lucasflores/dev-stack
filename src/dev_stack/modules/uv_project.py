@@ -41,31 +41,9 @@ def _normalize_name(name: str) -> str:
     return result
 
 
-# Directories excluded from root-level Python source scanning
-_SCAN_EXCLUDE_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules", ".tox"})
-
-
-def scan_root_python_sources(repo_root: Path) -> tuple[bool, list[str]]:
-    """Scan the repo root at depth 1 for Python files and packages.
-
-    Returns ``(has_python_sources, package_names)`` where *package_names*
-    lists directories that contain ``__init__.py``.
-    """
-    has_py = False
-    packages: list[str] = []
-    try:
-        entries = list(repo_root.iterdir())
-    except OSError:
-        return False, []
-    for entry in entries:
-        if entry.name in _SCAN_EXCLUDE_DIRS:
-            continue
-        if entry.is_file() and entry.suffix == ".py":
-            has_py = True
-        elif entry.is_dir() and (entry / "__init__.py").is_file():
-            has_py = True
-            packages.append(entry.name)
-    return has_py, sorted(packages)
+# Re-export scanning helpers from layout.py for backward compatibility
+from ..layout import _SCAN_EXCLUDE_DIRS as _SCAN_EXCLUDE_DIRS  # noqa: F401
+from ..layout import scan_root_python_sources as scan_root_python_sources  # noqa: F401
 
 
 def _run_uv_init(repo_root: Path, pkg_name: str) -> tuple[bool, str]:
@@ -91,7 +69,7 @@ def _run_uv_init(repo_root: Path, pkg_name: str) -> tuple[bool, str]:
     return completed.returncode == 0, output
 
 
-def _augment_pyproject(path: Path, pkg_name: str) -> list[str]:
+def _augment_pyproject(path: Path, pkg_name: str, package_root: str = "src") -> list[str]:
     """Read ``pyproject.toml``, add opinionated tool sections (skip-if-exists), write back.
 
     Returns a list of section names that were added.
@@ -128,7 +106,7 @@ def _augment_pyproject(path: Path, pkg_name: str) -> list[str]:
     if "coverage" not in tool:
         tool["coverage"] = {
             "run": {
-                "source": [f"src/{pkg_name}"],
+                "source": [f"{package_root}/{pkg_name}" if package_root != "." else pkg_name],
                 "omit": ["tests/*"],
             },
         }
@@ -151,7 +129,7 @@ def _augment_pyproject(path: Path, pkg_name: str) -> list[str]:
             "warn_unused_configs": True,
             "disallow_incomplete_defs": True,
             "check_untyped_defs": True,
-            "mypy_path": "src",
+            "mypy_path": package_root,
         }
         added.append("tool.mypy")
 
@@ -342,7 +320,8 @@ class UvProjectModule(ModuleBase):
                 created.append(src_init)
 
         # --- Step 2: augment pyproject.toml ---
-        added_sections = _augment_pyproject(pyproject, pkg_name)
+        # Greenfield: uv init --package always creates src/ layout
+        added_sections = _augment_pyproject(pyproject, pkg_name, "src")
         if added_sections:
             warnings.append(f"Added TOML sections: {', '.join(added_sections)}")
 
@@ -377,6 +356,9 @@ class UvProjectModule(ModuleBase):
     # ------------------------------------------------------------------
 
     def verify(self) -> ModuleStatus:
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = self._detect_package_name()
         missing: list[str] = []
 
@@ -386,9 +368,8 @@ class UvProjectModule(ModuleBase):
             "uv.lock": self.repo_root / "uv.lock",
         }
         if pkg_name:
-            checks[f"src/{pkg_name}/__init__.py"] = (
-                self.repo_root / "src" / pkg_name / "__init__.py"
-            )
+            init_rel = layout.package_root / pkg_name / "__init__.py"
+            checks[str(init_rel)] = self.repo_root / init_rel
 
         for label, path in checks.items():
             if not path.exists():
@@ -427,6 +408,9 @@ class UvProjectModule(ModuleBase):
         return ModuleResult(True, "UV project artifacts removed", files_deleted=deleted)
 
     def update(self) -> ModuleResult:
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = self._detect_package_name() or _normalize_name(self.repo_root.name)
         pyproject = self.repo_root / "pyproject.toml"
         warnings: list[str] = []
@@ -437,7 +421,7 @@ class UvProjectModule(ModuleBase):
                 message="pyproject.toml not found — nothing to update",
             )
 
-        added_sections = _augment_pyproject(pyproject, pkg_name)
+        added_sections = _augment_pyproject(pyproject, pkg_name, str(layout.package_root))
         if added_sections:
             warnings.append(f"Added TOML sections: {', '.join(added_sections)}")
             # Re-lock if pyproject.toml was modified
@@ -457,7 +441,11 @@ class UvProjectModule(ModuleBase):
     # ------------------------------------------------------------------
 
     def preview_files(self) -> dict[Path, str]:
+        from ..layout import LayoutStyle, detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = self._detect_package_name() or _normalize_name(self.repo_root.resolve().name)
+        pkg_root_str = str(layout.package_root)
         files: dict[Path, str] = {}
 
         # Generate the augmented pyproject.toml content
@@ -484,8 +472,9 @@ class UvProjectModule(ModuleBase):
                 "ini_options": {"testpaths": ["tests"], "addopts": "--strict-markers -v"},
             }
         if "coverage" not in tool:
+            source = f"{pkg_root_str}/{pkg_name}" if pkg_root_str != "." else pkg_name
             tool["coverage"] = {
-                "run": {"source": [f"src/{pkg_name}"], "omit": ["tests/*"]},
+                "run": {"source": [source], "omit": ["tests/*"]},
             }
         if "mypy" not in tool:
             tool["mypy"] = {
@@ -495,7 +484,7 @@ class UvProjectModule(ModuleBase):
                 "warn_unused_configs": True,
                 "disallow_incomplete_defs": True,
                 "check_untyped_defs": True,
-                "mypy_path": "src",
+                "mypy_path": pkg_root_str,
             }
         project = data_copy.setdefault("project", {})
         opt_deps = project.setdefault("optional-dependencies", {})
@@ -510,7 +499,11 @@ class UvProjectModule(ModuleBase):
         tomli_w.dump(data_copy, buf)
         files[Path("pyproject.toml")] = buf.getvalue().decode("utf-8")
 
-        files[Path(f"src/{pkg_name}/__init__.py")] = f'"""Top-level package for {pkg_name}."""\n'
+        if layout.layout_style == LayoutStyle.FLAT:
+            init_path = Path(f"{pkg_name}/__init__.py")
+        else:
+            init_path = Path(f"src/{pkg_name}/__init__.py")
+        files[init_path] = f'"""Top-level package for {pkg_name}."""\n'
         files[Path("tests/__init__.py")] = ""
         files[Path("tests/test_placeholder.py")] = (
             f'"""Placeholder test generated by dev-stack."""\n\n\n'

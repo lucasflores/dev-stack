@@ -28,6 +28,10 @@ Auto-generated from all feature plans. Last updated: 2026-02-10
 - File-based — `apm.yml`, `apm.lock.yaml`, agent-native config dirs (`.claude/`, `.github/`, `.cursor/`, `.opencode/`) (013-apm-module-swap)
 - Python 3.11+ (pyproject.toml: `requires-python = ">=3.11"`) + Click (CLI), PyYAML (apm.yml generation), `subprocess` (APM CLI invocation), `tomli-w` (TOML writing), `packaging` (version comparison) (014-apm-module-swap)
 - File-based (`apm.yml`, `apm.lock.yaml`, `dev-stack.toml`) (014-apm-module-swap)
+- Python 3.11+ + click, rich, packaging, tomli-w, yaml, gitlint-core, ruff (016-brownfield-init-bugs)
+- File-based (pyproject.toml, apm.yml, .dev-stack/ marker files) (016-brownfield-init-bugs)
+- Python 3.11+ + stdlib (`pathlib`, `tomllib`, `dataclasses`, `enum`, `logging`); existing `uv_project.scan_root_python_sources()` for repo-root scanning (017-package-layout-detection)
+- N/A (filesystem detection only; no new persistence) (017-package-layout-detection)
 
 - Python 3.11+ + `click` (CLI framework), `tomli`/`tomli-w` (TOML read/write), `rich` (terminal output), `d2` CLI (diagrams) (001-dev-stack-ecosystem)
 
@@ -47,9 +51,9 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
-- 014-apm-module-swap: Added Python 3.11+ (pyproject.toml: `requires-python = ">=3.11"`) + Click (CLI), PyYAML (apm.yml generation), `subprocess` (APM CLI invocation), `tomli-w` (TOML writing), `packaging` (version comparison)
-- 012-universal-init-pipeline: Added Python 3.11+ + click, tomli_w, tomllib, gitlint-core, pathlib
-- 013-apm-module-swap: Added Python 3.12+ + click (CLI), subprocess (APM CLI invocation), PyYAML (apm.yml generation)
+- 017-package-layout-detection: Added Python 3.11+ + stdlib (`pathlib`, `tomllib`, `dataclasses`, `enum`, `logging`); existing `uv_project.scan_root_python_sources()` for repo-root scanning
+- 016-brownfield-init-bugs: Added Python 3.11+ + click, rich, packaging, tomli-w, yaml, gitlint-core, ruff
+- 016-brownfield-init-bugs: Added Python 3.11+ + click, rich, packaging, tomli-w, yaml, gitlint-core, ruff
 
 
 <!-- MANUAL ADDITIONS START -->

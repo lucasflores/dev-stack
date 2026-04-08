@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Sequence
 
+from ..layout import PackageLayout
 from .base import ModuleBase, ModuleResult, ModuleStatus
 
 # ---------------------------------------------------------------------------
@@ -12,15 +13,19 @@ from .base import ModuleBase, ModuleResult, ModuleStatus
 # ---------------------------------------------------------------------------
 
 
-def _render_conf_py(pkg_name: str) -> str:
-    """Generate ``docs/conf.py`` content with ``sys.path.insert`` for src/ layout."""
+def _render_conf_py(pkg_name: str, layout: PackageLayout | None = None) -> str:
+    """Generate ``docs/conf.py`` content with ``sys.path.insert`` for the detected layout."""
+    if layout is not None and layout.package_root == Path("."):
+        relative_root = ".."
+    else:
+        relative_root = f"../{layout.package_root}" if layout else "../src"
     return f'''\
 """Sphinx configuration for {pkg_name}."""
 
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../src"))
+sys.path.insert(0, os.path.abspath("{relative_root}"))
 
 project = "{pkg_name}"
 extensions = [
@@ -58,8 +63,13 @@ Indices and tables
 """
 
 
-def _render_makefile(pkg_name: str) -> str:
+def _render_makefile(pkg_name: str, layout: PackageLayout | None = None) -> str:
     """Generate ``docs/Makefile`` with ``-W --keep-going`` flags."""
+    if layout is not None and layout.package_root == Path("."):
+        apidoc_path = f"../{pkg_name}"
+    else:
+        root = layout.package_root if layout else Path("src")
+        apidoc_path = f"../{root}/{pkg_name}"
     return f"""\
 SPHINXOPTS  ?= -W --keep-going
 SOURCEDIR   = .
@@ -69,7 +79,7 @@ html:
 \tpython3 -m sphinx -b html $(SPHINXOPTS) $(SOURCEDIR) $(BUILDDIR)
 
 apidoc:
-\tpython3 -m sphinx.ext.apidoc -o api ../src/{pkg_name} -f --module-first -e
+\tpython3 -m sphinx.ext.apidoc -o api {apidoc_path} -f --module-first -e
 
 clean:
 \trm -rf $(BUILDDIR) api/
@@ -145,6 +155,9 @@ class SphinxDocsModule(ModuleBase):
     # ------------------------------------------------------------------
 
     def install(self, *, force: bool = False) -> ModuleResult:
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = _detect_package_name(self.repo_root, self.manifest)
         created: list[Path] = []
         modified: list[Path] = []
@@ -154,9 +167,9 @@ class SphinxDocsModule(ModuleBase):
 
         # Write templates
         targets = {
-            docs_dir / "conf.py": _render_conf_py(pkg_name),
+            docs_dir / "conf.py": _render_conf_py(pkg_name, layout),
             docs_dir / "index.rst": _render_index_rst(pkg_name),
-            docs_dir / "Makefile": _render_makefile(pkg_name),
+            docs_dir / "Makefile": _render_makefile(pkg_name, layout),
         }
 
         for dest, content in targets.items():
@@ -224,11 +237,14 @@ class SphinxDocsModule(ModuleBase):
     # ------------------------------------------------------------------
 
     def preview_files(self) -> dict[Path, str]:
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
         pkg_name = _detect_package_name(self.repo_root, self.manifest)
         return {
-            Path("docs/conf.py"): _render_conf_py(pkg_name),
+            Path("docs/conf.py"): _render_conf_py(pkg_name, layout),
             Path("docs/index.rst"): _render_index_rst(pkg_name),
-            Path("docs/Makefile"): _render_makefile(pkg_name),
+            Path("docs/Makefile"): _render_makefile(pkg_name, layout),
         }
 
 

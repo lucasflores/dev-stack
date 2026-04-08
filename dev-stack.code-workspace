@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../agent-skills"
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			".specify/scripts/bash/": true,
+			".specify/scripts/powershell/": true,
+			"/Users/lucasflores/dev-stack/.venv/bin/python": true,
+			".venv/bin/python": true,
+			"git rev-parse": true,
+			"pytest": true,
+			"/^python -m pytest tests/contract/test_cli_release\\.py -v --no-cov -p no:indico 2>&1 \\| tail -20$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^python -m pytest tests/unit/test_signing\\.py -v --no-cov -p no:indico 2>&1 \\| tail -40$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		}
+	}
+}

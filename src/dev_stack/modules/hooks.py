@@ -29,8 +29,15 @@ class HookEntry:
     stages: tuple[str, ...] = ("commit",)
 
 
-def _build_hook_list() -> list[HookEntry]:
+from ..layout import PackageLayout
+
+
+def _build_hook_list(layout: PackageLayout | None = None) -> list[HookEntry]:
     """Build list of hooks for the project."""
+    if layout and layout.package_names:
+        targets = " ".join(str(layout.package_root / pkg) for pkg in layout.package_names)
+    else:
+        targets = "src/"
     return [
         HookEntry(
             id="dev-stack-pipeline",
@@ -43,7 +50,7 @@ def _build_hook_list() -> list[HookEntry]:
         HookEntry(
             id="dev-stack-mypy",
             name="mypy type check",
-            entry="python3 -m mypy src/",
+            entry=f"python3 -m mypy {targets}",
             types=("python",),
         ),
     ]
@@ -152,7 +159,10 @@ class HooksModule(ModuleBase):
         self._copy_with_permission(script_template, script_dest, 0o755, force, created, modified)
 
         # .pre-commit-config.yaml: YAML-aware merge keeps user hooks intact.
-        hooks = _build_hook_list()
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
+        hooks = _build_hook_list(layout)
         config_dest = self.repo_root / ".pre-commit-config.yaml"
         existed = config_dest.exists()
         changed = _write_pre_commit_config(config_dest, hooks)
@@ -239,7 +249,10 @@ class HooksModule(ModuleBase):
 
     def preview_files(self) -> dict[Path, str]:
         script_template = (TEMPLATE_DIR / "pre-commit").read_text(encoding="utf-8")
-        hooks = _build_hook_list()
+        from ..layout import detect_package_layout
+
+        layout = detect_package_layout(self.repo_root, self.manifest)
+        hooks = _build_hook_list(layout)
         config_content = _render_pre_commit_config(hooks)
         return {
             Path("scripts/hooks/pre-commit"): script_template,

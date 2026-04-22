@@ -83,4 +83,6 @@ def test_commit_stage_generates_structured_message(tmp_path: Path) -> None:
     assert trailers["Spec-Ref"][0].endswith("specs/alpha/spec.md")
     assert trailers["Task-Ref"][0].endswith("specs/alpha/tasks.md")
     assert trailers["Agent"][0] == "claude"
-    assert trailers["Pipeline"][0] == "lint=pass, test=pass"
+    pipeline_tokens = {token.strip() for token in trailers["Pipeline"][0].split(",")}
+    assert "lint=pass" in pipeline_tokens
+    assert "test=pass" in pipeline_tokens

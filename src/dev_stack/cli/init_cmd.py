@@ -171,12 +171,12 @@ def init_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> None:
             (marker_dir / "brownfield-init").touch()
             _set_brownfield_pipeline_defaults(repo_root)
         # FR-005: Detect and offer to migrate requirements.txt
-        if not is_greenfield:
+        if not is_greenfield and not ctx.json_output:
             _detect_and_migrate_requirements(
                 repo_root, interactive=not ctx.json_output, json_output=ctx.json_output
             )
         # FR-006: Detect root-level packages and recommend src/ layout
-        if not is_greenfield:
+        if not is_greenfield and not ctx.json_output:
             _detect_root_packages(repo_root, json_output=ctx.json_output)
         if should_write_manifest:
             manifest.rollback_ref = rollback_ref

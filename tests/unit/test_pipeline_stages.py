@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import tomli_w
 
 from dev_stack.pipeline.agent_bridge import AgentResponse
 from dev_stack.pipeline.stages import (
@@ -43,6 +44,24 @@ def repo_root(tmp_path: Path) -> Path:
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     return tmp_path
+
+
+def _write_pipeline_pyproject(
+    repo_root: Path,
+    *,
+    strict_docs: bool | None = None,
+    raw: str | None = None,
+) -> None:
+    if raw is not None:
+        (repo_root / "pyproject.toml").write_text(raw, encoding="utf-8")
+        return
+    data: dict[str, object] = {"project": {"name": "test"}}
+    if strict_docs is not None:
+        data = {
+            "tool": {"dev-stack": {"pipeline": {"strict_docs": strict_docs}}},
+            "project": {"name": "test"},
+        }
+    (repo_root / "pyproject.toml").write_text(tomli_w.dumps(data), encoding="utf-8")
 
 
 def test_execute_commit_stage_writes_commit_message(monkeypatch, repo_root: Path) -> None:
@@ -450,22 +469,26 @@ class TestIsStrictDocs:
     def test_defaults_to_true_when_no_pipeline_section(self, repo_root: Path) -> None:
         from dev_stack.pipeline.stages import _is_strict_docs
 
-        import tomli_w
-
-        pyproject = repo_root / "pyproject.toml"
-        pyproject.write_text(tomli_w.dumps({"project": {"name": "test"}}))
+        _write_pipeline_pyproject(repo_root)
         context = StageContext(repo_root=repo_root)
         assert _is_strict_docs(context) is True
 
     def test_reads_false(self, repo_root: Path) -> None:
         from dev_stack.pipeline.stages import _is_strict_docs
 
-        import tomli_w
-
-        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
-        (repo_root / "pyproject.toml").write_text(tomli_w.dumps(data))
+        _write_pipeline_pyproject(repo_root, strict_docs=False)
         context = StageContext(repo_root=repo_root)
         assert _is_strict_docs(context) is False
+
+    def test_defaults_to_true_when_pyproject_unreadable(self, repo_root: Path) -> None:
+        from dev_stack.pipeline.stages import _is_strict_docs
+
+        _write_pipeline_pyproject(
+            repo_root,
+            raw="[tool.dev-stack.pipeline\nstrict_docs = false",
+        )
+        context = StageContext(repo_root=repo_root)
+        assert _is_strict_docs(context) is True
 
 
 class TestDocsApiStrictDocs:
@@ -512,8 +535,6 @@ class TestDocsApiStrictDocs:
         """Brownfield (strict_docs=false): sphinx build omits -W."""
         import subprocess as sp
 
-        import tomli_w
-
         monkeypatch.setattr(
             "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
         )
@@ -523,8 +544,7 @@ class TestDocsApiStrictDocs:
         src_pkg.mkdir(parents=True)
         (src_pkg / "__init__.py").touch()
 
-        data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
-        (repo_root / "pyproject.toml").write_text(tomli_w.dumps(data))
+        _write_pipeline_pyproject(repo_root, strict_docs=False)
 
         captured_cmds: list[tuple] = []
 
@@ -548,3 +568,160 @@ class TestDocsApiStrictDocs:
         assert len(build_cmds) == 1
         assert "-W" not in build_cmds[0]
         assert "--keep-going" not in build_cmds[0]
+
+    def test_strict_docs_fails_when_sphinx_returns_warning_error(
+        self, monkeypatch, repo_root: Path
+    ) -> None:
+        """Greenfield strict mode fails when Sphinx exits non-zero on warnings."""
+        import subprocess as sp
+
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        docs_dir = repo_root / "docs"
+        docs_dir.mkdir()
+        src_pkg = repo_root / "src" / "mypkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").touch()
+
+        def fake_subprocess_run(cmd, **kwargs):
+            if cmd[:5] == ("python3", "-m", "sphinx", "-b", "html"):
+                assert "-W" in cmd
+
+                class BuildFailResult:
+                    returncode = 1
+                    stdout = ""
+                    stderr = "WARNING: undocumented member"
+
+                return BuildFailResult()
+
+            class SuccessResult:
+                returncode = 0
+                stdout = "ok"
+                stderr = ""
+
+            return SuccessResult()
+
+        monkeypatch.setattr(sp, "run", fake_subprocess_run)
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_docs_api_stage(context)
+
+        assert result.status == StageStatus.FAIL
+        assert "WARNING: undocumented member" in (result.output or "")
+
+    def test_non_strict_build_errors_still_fail(self, monkeypatch, repo_root: Path) -> None:
+        """Brownfield mode still hard-fails on true Sphinx build errors."""
+        import subprocess as sp
+
+        _write_pipeline_pyproject(repo_root, strict_docs=False)
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        docs_dir = repo_root / "docs"
+        docs_dir.mkdir()
+        src_pkg = repo_root / "src" / "mypkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").touch()
+
+        def fake_subprocess_run(cmd, **kwargs):
+            if cmd[:5] == ("python3", "-m", "sphinx", "-b", "html"):
+                assert "-W" not in cmd
+
+                class BuildFailResult:
+                    returncode = 1
+                    stdout = ""
+                    stderr = "Sphinx error: unknown directive"
+
+                return BuildFailResult()
+
+            class SuccessResult:
+                returncode = 0
+                stdout = "ok"
+                stderr = ""
+
+            return SuccessResult()
+
+        monkeypatch.setattr(sp, "run", fake_subprocess_run)
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_docs_api_stage(context)
+
+        assert result.status == StageStatus.FAIL
+        assert "Sphinx error: unknown directive" in (result.output or "")
+
+    def test_docs_api_skips_when_docs_directory_missing(self, monkeypatch, repo_root: Path) -> None:
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_docs_api_stage(context)
+
+        assert result.status == StageStatus.SKIP
+        assert result.skipped_reason == "docs/ directory not found"
+
+    def test_non_strict_docs_pass_allows_follow_up_stage(self, monkeypatch, repo_root: Path) -> None:
+        """docs-api pass in non-strict mode does not block subsequent hard stages."""
+        from dev_stack.pipeline.runner import PipelineRunner
+        from dev_stack.pipeline.stages import PipelineStage
+
+        import subprocess as sp
+
+        _write_pipeline_pyproject(repo_root, strict_docs=False)
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._tool_available_in_venv", lambda tool, root: True
+        )
+        docs_dir = repo_root / "docs"
+        docs_dir.mkdir()
+        src_pkg = repo_root / "src" / "mypkg"
+        src_pkg.mkdir(parents=True)
+        (src_pkg / "__init__.py").touch()
+
+        def fake_subprocess_run(cmd, **kwargs):
+            if cmd[:5] == ("python3", "-m", "sphinx", "-b", "html"):
+                return type(
+                    "Res",
+                    (),
+                    {"returncode": 0, "stdout": "WARNING: tolerated", "stderr": ""},
+                )()
+            return type("Res", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+        monkeypatch.setattr(sp, "run", fake_subprocess_run)
+
+        follow_up_called = {"value": False}
+
+        def _follow_up(_context: StageContext) -> StageResult:
+            follow_up_called["value"] = True
+            return StageResult(
+                stage_name="post-docs",
+                status=StageStatus.PASS,
+                failure_mode=FailureMode.HARD,
+                duration_ms=1,
+            )
+
+        runner = PipelineRunner(
+            repo_root,
+            stages=[
+                PipelineStage(
+                    order=1,
+                    name="docs-api",
+                    failure_mode=FailureMode.HARD,
+                    requires_agent=False,
+                    executor=_execute_docs_api_stage,
+                ),
+                PipelineStage(
+                    order=2,
+                    name="post-docs",
+                    failure_mode=FailureMode.HARD,
+                    requires_agent=False,
+                    executor=_follow_up,
+                ),
+            ],
+        )
+
+        result = runner.run()
+
+        assert result.success is True
+        assert follow_up_called["value"] is True
+        assert [stage.stage_name for stage in result.results] == ["docs-api", "post-docs"]

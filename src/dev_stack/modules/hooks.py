@@ -101,9 +101,19 @@ def _write_pre_commit_config(config_dest: Path, hooks: list[HookEntry]) -> bool:
 
     existing_text = config_dest.read_text(encoding="utf-8")
     try:
-        existing: dict[str, Any] = yaml.safe_load(existing_text) or {}
+        loaded = yaml.safe_load(existing_text)
     except yaml.YAMLError:
         # Unparseable YAML — overwrite with just dev-stack hooks.
+        config_dest.write_text(_render_pre_commit_config(hooks), encoding="utf-8")
+        return True
+
+    # Existing file can be valid YAML but non-mapping (e.g., plain string).
+    # Treat it like unstructured content and replace with canonical config.
+    if loaded is None:
+        existing: dict[str, Any] = {}
+    elif isinstance(loaded, dict):
+        existing = loaded
+    else:
         config_dest.write_text(_render_pre_commit_config(hooks), encoding="utf-8")
         return True
 

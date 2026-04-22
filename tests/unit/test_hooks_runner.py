@@ -126,3 +126,30 @@ class TestCommitMsgCommentStripping:
         assert "#" not in clean.split("\n")
         assert "Line1" in clean
         assert "Line2" in clean
+
+    def test_run_commit_msg_hook_preserves_uc5_markdown_sections_end_to_end(
+        self, tmp_path, monkeypatch, capsys
+    ) -> None:
+        """Regression: ## headers must survive hook linting for UC5 commits."""
+        monkeypatch.delenv("DEV_STACK_NO_HOOKS", raising=False)
+        message = (
+            "feat(cli): preserve uc5 section headers\n\n"
+            "## Intent\n"
+            "Validate heading preservation in commit-msg linting.\n\n"
+            "## Reasoning\n"
+            "Gitlint comment stripping must not remove markdown sections.\n\n"
+            "## Scope\n"
+            "commit-msg hook parsing path only.\n\n"
+            "## Narrative\n"
+            "Agent message structure remains intact through validation.\n\n"
+            "Spec-Ref: none\n"
+            "Task-Ref: none\n"
+            "Agent: claude\n"
+            "Pipeline: lint=pass, test=pass\n"
+            "Edited: false\n"
+        )
+
+        rc = self._write_and_run(tmp_path, message)
+        captured = capsys.readouterr()
+
+        assert rc == 0, captured.err

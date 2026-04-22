@@ -81,7 +81,7 @@ class TestCommitMsgCommentStripping:
         msg_file.write_text(msg, encoding="utf-8")
         # Read back what the hook would clean
         import re
-        lines = [ln for ln in msg.splitlines() if not re.match(r"^# |^#$", ln)]
+        lines = [ln for ln in msg.splitlines() if not re.match(r"^#(\s|$)", ln)]
         clean = "\n".join(lines).strip()
         # Git comments should be gone
         assert "# This is a git comment" not in clean
@@ -93,7 +93,7 @@ class TestCommitMsgCommentStripping:
         """## Intent, ### Sub, etc. must survive stripping."""
         msg = "feat: agent commit\n\n## Intent\nAdd brownfield\n## Reasoning\nNeeded\n### Detail\nMore"
         import re
-        lines = [ln for ln in msg.splitlines() if not re.match(r"^# |^#$", ln)]
+        lines = [ln for ln in msg.splitlines() if not re.match(r"^#(\s|$)", ln)]
         clean = "\n".join(lines).strip()
         assert "## Intent" in clean
         assert "## Reasoning" in clean
@@ -110,7 +110,7 @@ class TestCommitMsgCommentStripping:
             "## Narrative\nDone"
         )
         import re
-        lines = [ln for ln in msg.splitlines() if not re.match(r"^# |^#$", ln)]
+        lines = [ln for ln in msg.splitlines() if not re.match(r"^#(\s|$)", ln)]
         clean = "\n".join(lines).strip()
         assert "## Intent" in clean
         assert "## Scope" in clean
@@ -121,9 +121,20 @@ class TestCommitMsgCommentStripping:
         """A line with just '#' is stripped as a git comment."""
         msg = "fix: bug\n\nLine1\n#\nLine2"
         import re
-        lines = [ln for ln in msg.splitlines() if not re.match(r"^# |^#$", ln)]
+        lines = [ln for ln in msg.splitlines() if not re.match(r"^#(\s|$)", ln)]
         clean = "\n".join(lines)
         assert "#" not in clean.split("\n")
+        assert "Line1" in clean
+        assert "Line2" in clean
+
+    def test_tab_prefixed_git_comment_stripped(self, tmp_path) -> None:
+        """A git comment line beginning with '#\t' is stripped."""
+        msg = "fix: bug\n\nLine1\n#\tcomment\nLine2"
+        import re
+
+        lines = [ln for ln in msg.splitlines() if not re.match(r"^#(\s|$)", ln)]
+        clean = "\n".join(lines)
+        assert "#\tcomment" not in clean
         assert "Line1" in clean
         assert "Line2" in clean
 

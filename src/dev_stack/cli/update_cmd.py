@@ -147,6 +147,10 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
             # Non-interactive contexts (tests/automation) cannot answer prompts.
             # Prefer deterministic overwrite behavior over aborting the update.
             force = True
+            for conflict in conflict_report.conflicts:
+                if conflict.resolution == "pending":
+                    conflict.resolution = "overwritten"
+            conflicts_payload = serialize_conflicts(conflict_report, repo_root)
         else:
             echo_conflict_summary(conflict_report, repo_root)
             skip_map, merge_map = resolve_conflicts_interactively(conflict_report, repo_root, preview_lookup)

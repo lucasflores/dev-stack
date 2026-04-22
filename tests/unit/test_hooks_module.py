@@ -5,8 +5,10 @@ import stat
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dev_stack.errors import ConflictError
+from dev_stack.modules import hooks
 from dev_stack.modules.hooks import HooksModule, TEMPLATE_DIR
 
 
@@ -64,6 +66,21 @@ def test_uninstall_and_verify_failure(tmp_path) -> None:
     module.uninstall()
 
     assert module.verify().healthy is False
+
+
+def test_write_pre_commit_config_replaces_invalid_repos_type(tmp_path: Path) -> None:
+    """Malformed repos content should not be coerced into invalid list entries."""
+    config_path = tmp_path / ".pre-commit-config.yaml"
+    config_path.write_text("repos: not-a-list\n", encoding="utf-8")
+
+    hooks._write_pre_commit_config(config_path, hooks._build_hook_list())
+
+    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    assert isinstance(loaded.get("repos"), list)
+    repos = loaded["repos"]
+    assert all(isinstance(repo, dict) for repo in repos)
+    assert any(repo.get("repo") == "local" for repo in repos)
 
 
 def test_module_base_marker_helpers(tmp_path) -> None:

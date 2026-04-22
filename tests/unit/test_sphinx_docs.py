@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tomli_w
+
 from dev_stack.modules.sphinx_docs import (
     SphinxDocsModule,
     _detect_package_name,
@@ -57,6 +59,14 @@ class TestRenderMakefile:
     def test_strict_docs_true_includes_w_flag(self) -> None:
         out = _render_makefile("mylib", strict_docs=True)
         assert "-W --keep-going" in out
+
+    def test_strict_docs_false_has_empty_sphinxopts_assignment(self) -> None:
+        out = _render_makefile("mylib", strict_docs=False)
+        assert "SPHINXOPTS  ?= \n" in out
+
+    def test_strict_docs_true_has_warning_fatal_sphinxopts_assignment(self) -> None:
+        out = _render_makefile("mylib", strict_docs=True)
+        assert "SPHINXOPTS  ?= -W --keep-going\n" in out
 
     def test_clean_target(self) -> None:
         out = _render_makefile("mylib")
@@ -240,16 +250,12 @@ class TestReadStrictDocs:
     def test_defaults_to_true_when_no_pipeline_section(self, tmp_path: Path) -> None:
         from dev_stack.modules.sphinx_docs import _read_strict_docs
 
-        import tomli_w
-
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text(tomli_w.dumps({"project": {"name": "test"}}))
         assert _read_strict_docs(tmp_path) is True
 
     def test_reads_false_from_config(self, tmp_path: Path) -> None:
         from dev_stack.modules.sphinx_docs import _read_strict_docs
-
-        import tomli_w
 
         data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": False}}}}
         pyproject = tmp_path / "pyproject.toml"
@@ -259,19 +265,24 @@ class TestReadStrictDocs:
     def test_reads_true_from_config(self, tmp_path: Path) -> None:
         from dev_stack.modules.sphinx_docs import _read_strict_docs
 
-        import tomli_w
-
         data = {"tool": {"dev-stack": {"pipeline": {"strict_docs": True}}}}
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text(tomli_w.dumps(data))
+        assert _read_strict_docs(tmp_path) is True
+
+    def test_defaults_to_true_when_pyproject_unreadable(self, tmp_path: Path) -> None:
+        from dev_stack.modules.sphinx_docs import _read_strict_docs
+
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.dev-stack.pipeline\nstrict_docs = false",
+            encoding="utf-8",
+        )
         assert _read_strict_docs(tmp_path) is True
 
 
 class TestSphinxDocsModuleBrownfieldMakefile:
     def test_install_brownfield_makefile_omits_w(self, tmp_path: Path) -> None:
         """When strict_docs=false in pyproject.toml, installed Makefile omits -W."""
-        import tomli_w
-
         pkg = tmp_path / "src" / "mypkg"
         pkg.mkdir(parents=True)
         (pkg / "__init__.py").touch()
@@ -285,6 +296,7 @@ class TestSphinxDocsModuleBrownfieldMakefile:
 
         makefile = (tmp_path / "docs" / "Makefile").read_text(encoding="utf-8")
         assert "-W" not in makefile
+        assert "SPHINXOPTS  ?= \n" in makefile
 
     def test_install_greenfield_makefile_includes_w(self, tmp_path: Path) -> None:
         """Default (no config) Makefile includes -W --keep-going."""
@@ -301,8 +313,6 @@ class TestSphinxDocsModuleBrownfieldMakefile:
 
     def test_preview_brownfield_makefile_omits_w(self, tmp_path: Path) -> None:
         """Preview for brownfield project omits -W."""
-        import tomli_w
-
         pkg = tmp_path / "src" / "mypkg"
         pkg.mkdir(parents=True)
         (pkg / "__init__.py").touch()
@@ -314,3 +324,14 @@ class TestSphinxDocsModuleBrownfieldMakefile:
         preview = module.preview_files()
         makefile_content = preview[Path("docs/Makefile")]
         assert "-W" not in makefile_content
+        assert "SPHINXOPTS  ?= \n" in makefile_content
+
+    def test_preview_greenfield_makefile_has_warning_fatal_flags(self, tmp_path: Path) -> None:
+        pkg = tmp_path / "src" / "mypkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").touch()
+
+        module = SphinxDocsModule(tmp_path, {})
+        preview = module.preview_files()
+        makefile_content = preview[Path("docs/Makefile")]
+        assert "SPHINXOPTS  ?= -W --keep-going\n" in makefile_content

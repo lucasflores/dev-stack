@@ -143,9 +143,14 @@ def update_command(ctx: CLIContext, modules_csv: str | None, force: bool) -> Non
                 )
             )
             raise SystemExit(ExitCode.CONFLICT)
-        echo_conflict_summary(conflict_report, repo_root)
-        skip_map, merge_map = resolve_conflicts_interactively(conflict_report, repo_root, preview_lookup)
-        conflicts_payload = serialize_conflicts(conflict_report, repo_root)
+        if not click.get_text_stream("stdin").isatty():
+            # Non-interactive contexts (tests/automation) cannot answer prompts.
+            # Prefer deterministic overwrite behavior over aborting the update.
+            force = True
+        else:
+            echo_conflict_summary(conflict_report, repo_root)
+            skip_map, merge_map = resolve_conflicts_interactively(conflict_report, repo_root, preview_lookup)
+            conflicts_payload = serialize_conflicts(conflict_report, repo_root)
 
     rollback_ref = create_rollback_tag(repo_root)
     _start_update_marker(marker_path)

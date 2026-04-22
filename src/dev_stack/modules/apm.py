@@ -1,6 +1,7 @@
 """APM module — delegates MCP server management to Microsoft's Agent Package Manager CLI."""
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -273,14 +274,50 @@ class APMModule(ModuleBase):
         )
 
     def _run_apm(self, args: list[str]) -> subprocess.CompletedProcess[str]:
-        """Execute APM CLI as a subprocess."""
-        return subprocess.run(
-            ["apm", *args],
-            capture_output=True,
-            text=True,
-            cwd=self.repo_root,
-            timeout=120,
-        )
+        """Execute APM CLI as a subprocess.
+
+        Timeouts are treated as install failures (non-zero return code) rather
+        than raising, so callers can surface warnings without aborting init.
+        """
+        timeout_seconds = self._apm_timeout_seconds()
+        command = ["apm", *args]
+        try:
+            return subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                cwd=self.repo_root,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode(
+                errors="replace"
+            )
+            stderr = exc.stderr if isinstance(exc.stderr, str) else (exc.stderr or b"").decode(
+                errors="replace"
+            )
+            timeout_msg = (
+                f"APM command timed out after {timeout_seconds}s: {' '.join(command)}"
+            )
+            combined_stderr = f"{stderr}\n{timeout_msg}".strip() if stderr else timeout_msg
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=124,
+                stdout=stdout,
+                stderr=combined_stderr,
+            )
+
+    def _apm_timeout_seconds(self) -> int:
+        raw = os.environ.get("DEV_STACK_APM_TIMEOUT_SECONDS") or os.environ.get("DEV_STACK_APM_TIMEOUT")
+        if raw:
+            try:
+                value = int(raw)
+                if value > 0:
+                    return value
+            except ValueError:
+                pass
+        # Keep init responsive when APM registry/network is slow.
+        return 45
 
     def _parse_install_result(
         self,

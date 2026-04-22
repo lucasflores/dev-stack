@@ -218,6 +218,24 @@ class TestSetBrownfieldPipelineDefaults:
             data = tomllib.load(fh)
         assert data["tool"]["dev-stack"]["pipeline"]["strict_docs"] is True
 
+    def test_does_not_overwrite_explicit_false(self, tmp_path: Path) -> None:
+        import tomllib
+
+        import tomli_w
+
+        existing = {
+            "tool": {"dev-stack": {"pipeline": {"strict_docs": False, "visualize": True}}}
+        }
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(tomli_w.dumps(existing))
+
+        _set_brownfield_pipeline_defaults(tmp_path)
+
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+        assert data["tool"]["dev-stack"]["pipeline"]["strict_docs"] is False
+        assert data["tool"]["dev-stack"]["pipeline"]["visualize"] is True
+
     def test_noop_when_no_pyproject(self, tmp_path: Path) -> None:
         # Should not raise
         _set_brownfield_pipeline_defaults(tmp_path)

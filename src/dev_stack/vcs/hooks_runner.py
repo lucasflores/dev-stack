@@ -66,7 +66,7 @@ def run_commit_msg_hook(msg_file_path: str) -> int:
 
         # Import gitlint components
         from gitlint.config import LintConfig
-        from gitlint.git import GitContext
+        from gitlint.git import GitCommit, GitCommitMessage, GitContext
         from gitlint.lint import GitLinter
 
         # Find the rules package path
@@ -82,8 +82,22 @@ def run_commit_msg_hook(msg_file_path: str) -> int:
 
         linter = GitLinter(config)
 
-        # Create a git context from the message string
-        ctx = GitContext.from_commit_msg(clean_message)
+        # Build commit context directly from already-cleaned message.
+        # GitContext.from_commit_msg() strips all lines that start with '#',
+        # which incorrectly removes markdown headings like "## Intent".
+        lines = clean_message.splitlines()
+        title = lines[0] if lines else ""
+        body = lines[1:] if len(lines) > 1 else []
+
+        ctx = GitContext()
+        commit_msg_obj = GitCommitMessage(
+            context=ctx,
+            original=clean_message,
+            full=clean_message,
+            title=title,
+            body=body,
+        )
+        ctx.commits.append(GitCommit(ctx, commit_msg_obj))
 
         has_errors = False
         for commit in ctx.commits:

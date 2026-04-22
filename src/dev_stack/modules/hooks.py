@@ -117,7 +117,13 @@ def _write_pre_commit_config(config_dest: Path, hooks: list[HookEntry]) -> bool:
         config_dest.write_text(_render_pre_commit_config(hooks), encoding="utf-8")
         return True
 
-    repos: list[dict[str, Any]] = list(existing.get("repos") or [])
+    raw_repos = existing.get("repos")
+    if isinstance(raw_repos, list) and all(isinstance(repo, dict) for repo in raw_repos):
+        repos: list[dict[str, Any]] = list(raw_repos)
+    else:
+        # Invalid repos shape (e.g. scalar, mapping, or mixed list). Replace
+        # with canonical local repo structure while preserving a valid file.
+        repos = []
 
     # Locate any existing ``local`` repo entry.
     local_idx = next(

@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
+import inspect
 from pathlib import Path
 
 import pytest
 
+from dev_stack.cli import visualize_cmd
 from dev_stack.errors import CodeBoardingError
 from dev_stack.visualization.output_parser import (
     AnalysisIndex,
@@ -283,3 +285,10 @@ class TestParseComponents:
         assert len(components) == 1
         assert components[0].mermaid is None
         assert "Missing or empty Mermaid" in caplog.text
+
+
+def test_visualize_cli_no_longer_imports_parser_or_readme_injector() -> None:
+    source = inspect.getsource(visualize_cmd)
+    assert "parse_components" not in source
+    assert "inject_root_diagram" not in source
+    assert "inject_component_diagrams" not in source

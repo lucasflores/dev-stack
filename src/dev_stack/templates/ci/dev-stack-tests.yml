@@ -11,9 +11,37 @@ permissions:
   contents: read
 
 jobs:
+  dev-stack-graph-freshness:
+    name: dev-stack-graph-freshness
+    runs-on: ubuntu-latest
+    # Cloud justification: Branch protection requires an immutable server-side
+    # validation check to prevent merges with stale graph artifacts.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install .[dev]; fi
+
+      - name: Validate graph freshness
+        env:
+          DEV_STACK_GRAPH_SCOPE: ci_required_check
+        run: |
+          dev-stack --json visualize --incremental --no-readme
+
   matrix-tests:
     name: py${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    needs: [dev-stack-graph-freshness]
     strategy:
       fail-fast: false
       matrix:

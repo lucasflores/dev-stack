@@ -36,9 +36,9 @@ Thumbs.db
 .tmp/
 *.log
 
-# CodeBoarding runtime files
-.codeboarding/cache/
-.codeboarding/logs/
+# Understand-Anything scratch artifacts
+.understand-anything/intermediate/
+.understand-anything/diff-overlay.json
 
 # Spec Kit artifacts
 .specify/cache/

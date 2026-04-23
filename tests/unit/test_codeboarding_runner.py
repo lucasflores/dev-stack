@@ -1,4 +1,4 @@
-"""Unit tests for codeboarding_runner."""
+"""Unit tests for legacy codeboarding_runner compatibility wrapper."""
 from __future__ import annotations
 
 import subprocess
@@ -7,17 +7,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dev_stack.errors import CodeBoardingError
+from dev_stack.errors import VisualizationError
 from dev_stack.visualization.codeboarding_runner import RunResult, check_cli_available, run
 
 
 class TestCheckCliAvailable:
     def test_returns_true_when_found(self) -> None:
-        with patch("dev_stack.visualization.codeboarding_runner.shutil.which", return_value="/usr/bin/codeboarding"):
+        with patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"):
             assert check_cli_available() is True
 
     def test_returns_false_when_missing(self) -> None:
-        with patch("dev_stack.visualization.codeboarding_runner.shutil.which", return_value=None):
+        with patch("dev_stack.visualization.understand_runner.shutil.which", return_value=None):
             assert check_cli_available() is False
 
 
@@ -28,14 +28,17 @@ class TestRun:
         mock_result.stdout = "Analysis complete"
         mock_result.stderr = ""
 
-        with patch("dev_stack.visualization.codeboarding_runner.subprocess.run", return_value=mock_result) as mock_run:
+        with (
+            patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"),
+            patch("dev_stack.visualization.understand_runner.subprocess.run", return_value=mock_result) as mock_run,
+        ):
             result = run(tmp_path, depth_level=2)
 
         assert result == RunResult(success=True, stdout="Analysis complete", stderr="", return_code=0)
         mock_run.assert_called_once()
         args = mock_run.call_args
         cmd = args[0][0]
-        assert cmd == ["codeboarding", "--local", str(tmp_path), "--depth-level", "2"]
+        assert cmd == ["/usr/bin/understand", "--local", str(tmp_path), "--depth-level", "2"]
         assert args[1]["timeout"] == 300
         assert args[1]["cwd"] == tmp_path
 
@@ -45,19 +48,25 @@ class TestRun:
         mock_result.stdout = ""
         mock_result.stderr = "API key missing"
 
-        with patch("dev_stack.visualization.codeboarding_runner.subprocess.run", return_value=mock_result):
+        with (
+            patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"),
+            patch("dev_stack.visualization.understand_runner.subprocess.run", return_value=mock_result),
+        ):
             result = run(tmp_path)
 
         assert result.success is False
         assert result.stderr == "API key missing"
         assert result.return_code == 1
 
-    def test_timeout_raises_codeboarding_error(self, tmp_path: Path) -> None:
-        with patch(
-            "dev_stack.visualization.codeboarding_runner.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="codeboarding", timeout=300, stderr="partial"),
+    def test_timeout_raises_visualization_error(self, tmp_path: Path) -> None:
+        with (
+            patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"),
+            patch(
+                "dev_stack.visualization.understand_runner.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="understand", timeout=300, stderr="partial"),
+            ),
         ):
-            with pytest.raises(CodeBoardingError, match="timed out"):
+            with pytest.raises(VisualizationError, match="timed out"):
                 run(tmp_path, timeout=300)
 
     def test_incremental_flag_appended(self, tmp_path: Path) -> None:
@@ -66,7 +75,10 @@ class TestRun:
         mock_result.stdout = ""
         mock_result.stderr = ""
 
-        with patch("dev_stack.visualization.codeboarding_runner.subprocess.run", return_value=mock_result) as mock_run:
+        with (
+            patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"),
+            patch("dev_stack.visualization.understand_runner.subprocess.run", return_value=mock_result) as mock_run,
+        ):
             run(tmp_path, incremental=True)
 
         cmd = mock_run.call_args[0][0]
@@ -78,7 +90,10 @@ class TestRun:
         mock_result.stdout = ""
         mock_result.stderr = ""
 
-        with patch("dev_stack.visualization.codeboarding_runner.subprocess.run", return_value=mock_result) as mock_run:
+        with (
+            patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"),
+            patch("dev_stack.visualization.understand_runner.subprocess.run", return_value=mock_result) as mock_run,
+        ):
             run(tmp_path, depth_level=3)
 
         cmd = mock_run.call_args[0][0]
@@ -92,7 +107,10 @@ class TestRun:
         mock_result.stdout = ""
         mock_result.stderr = ""
 
-        with patch("dev_stack.visualization.codeboarding_runner.subprocess.run", return_value=mock_result) as mock_run:
+        with (
+            patch("dev_stack.visualization.understand_runner.shutil.which", return_value="/usr/bin/understand"),
+            patch("dev_stack.visualization.understand_runner.subprocess.run", return_value=mock_result) as mock_run,
+        ):
             run(tmp_path, timeout=600)
 
         assert mock_run.call_args[1]["timeout"] == 600

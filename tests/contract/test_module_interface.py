@@ -78,7 +78,7 @@ def test_visualization_module_identity() -> None:
 
     assert VisualizationModule.NAME == "visualization"
     assert VisualizationModule.VERSION == "1.0.0"
-    assert ".codeboarding" in VisualizationModule.MANAGED_FILES[0]
+    assert ".understand-anything" in VisualizationModule.MANAGED_FILES[0]
     assert ".dev-stack/viz" in VisualizationModule.MANAGED_FILES[1]
 
 

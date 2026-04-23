@@ -351,10 +351,10 @@ def run_pre_push_hook(stdin: IO[str]) -> int:
 
 
 def run_pre_commit_hook() -> int:
-    """Run lint and typecheck pipeline stages as a pre-commit check.
+    """Run lint, typecheck, and visualize checks before commit.
 
-    Executes the first two pipeline stages (lint and typecheck) to catch
-    issues before the commit is created.
+    Executes lint/typecheck hard gates plus visualization freshness validation
+    so stale or indeterminate graph artifacts block local commits.
 
     Returns:
         Exit code: 0 for success, 1 for rejection.
@@ -378,10 +378,10 @@ def run_pre_commit_hook() -> int:
         )
 
         stages = build_pipeline_stages()
-        # Run only lint (order=1) and typecheck (order=2)
-        pre_commit_stages = [s for s in stages if s.name in ("lint", "typecheck")]
+        # Run lint (order=1), typecheck (order=2), and visualize (order=8).
+        pre_commit_stages = [s for s in stages if s.name in ("lint", "typecheck", "visualize")]
 
-        ctx = StageContext(repo_root=repo_root)
+        ctx = StageContext(repo_root=repo_root, hook_context="pre-commit")
         has_failures = False
 
         for stage in pre_commit_stages:

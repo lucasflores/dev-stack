@@ -51,12 +51,16 @@ class ConfigError(DevStackError):
     """Raised when configuration or environment validation fails."""
 
 
-class CodeBoardingError(DevStackError):
-    """Raised when the CodeBoarding subprocess fails or produces invalid output."""
+class VisualizationError(DevStackError):
+    """Raised when visualization tooling fails or returns invalid artifacts."""
 
     def __init__(self, message: str, stderr: str | None = None) -> None:
         self.stderr = stderr
         super().__init__(message)
+
+
+class CodeBoardingError(VisualizationError):
+    """Backward-compatible alias for legacy CodeBoarding call sites."""
 
 
 del Iterable, Sequence, List

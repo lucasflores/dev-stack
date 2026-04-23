@@ -42,7 +42,7 @@ def _build_hook_list(layout: PackageLayout | None = None) -> list[HookEntry]:
         HookEntry(
             id="dev-stack-pipeline",
             name="dev-stack pipeline",
-            entry="dev-stack pipeline run",
+            entry="./scripts/hooks/pre-commit",
             stages=("commit",),
         ),
         HookEntry(id="dev-stack-ruff", name="ruff lint", entry="ruff check", pass_filenames=True),

@@ -1,6 +1,6 @@
 # Dev-Stack Ecosystem
 
-> One-command bootstrap — 8 pluggable modules, 9-stage pipeline, CodeBoarding visualization, and VCS best-practices enforcement for any Python repo.
+> One-command bootstrap — 8 pluggable modules, 9-stage pipeline, Understand-Anything graph freshness enforcement, and VCS best-practices enforcement for any Python repo.
 
 - [What Is Dev-Stack?](#what-is-dev-stack)
 - [Key Capabilities](#key-capabilities)
@@ -23,10 +23,10 @@ Dev-Stack is a Python 3.11+ CLI that turns any repository into a fully automated
 
 - **8 pluggable modules** — Hooks, apm (Agent Project Maneger for agents, skills, and MCP), CI Workflows, Docker, Visualization, UV Project, Sphinx Docs, and VCS Hooks install independently or as a curated bundle
 - **9-stage automation pipeline** — lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → visualize → commit-message, wired into git pre-commit hooks with hard/soft gating
-- **CodeBoarding visualization** — generates Mermaid architecture diagrams from source analysis and injects them into README files with managed markers
+- **Understand-Anything visualization** — validates committed interactive graph artifacts and enforces freshness for graph-impacting changes
 - **VCS best-practices enforcement** — conventional commit linting, configurable branch naming, SSH commit signing, PR generation, changelog automation, and semantic release
 - **Python project scaffolding** — `uv init --package` bootstrapping with ruff, mypy, pytest, coverage, and Sphinx doc configuration out of the box
-- **Agent-native execution** — auto-detects Claude, GitHub Copilot, or Cursor CLIs for docs generation, commit messages, and architecture diagrams
+- **Agent-native execution** — auto-detects Claude, GitHub Copilot, or Cursor CLIs for docs generation, commit messages, and interactive graph workflows
 - **Brownfield safety** — marker-delimited sections, SHA-256 conflict detection, and git-based rollback prevent accidental overwrites in existing repos
 
 
@@ -34,7 +34,7 @@ Dev-Stack is a Python 3.11+ CLI that turns any repository into a fully automated
 
 - 🧩 **Module-driven scaffolding** — 9 independently installable modules cover hooks, specs, apm, CI, Docker, visualization, Python project setup, Sphinx docs, and VCS enforcement
 - 🔁 **9-stage automation pipeline** — lint, typecheck, test, security, docs-api, docs-narrative, infra-sync, visualize, and commit-message stages with hard/soft gating wired into git hooks
-- 📊 **CodeBoarding visualization** — generates Mermaid architecture diagrams from source analysis with `--depth-level`, `--incremental`, and per-folder sub-diagrams
+- 📊 **Understand-Anything visualization** — validates `.understand-anything/knowledge-graph.json`, detects graph-impacting changes, and enforces local/CI freshness policy
 - 🔒 **VCS best-practices enforcement** — conventional commit linting, configurable branch naming regex, SSH commit signing, automated PR descriptions, changelogs, and semantic releases
 - 🐍 **Python project scaffolding** — `uv init --package` bootstrapping with ruff, mypy, pytest, coverage, and Sphinx pre-configured
 - 🤖 **Constitutional agent instructions** — generates and injects `instructions.md` and `constitution-template.md` so coding agents follow project governance from day one
@@ -48,7 +48,7 @@ Dev-Stack is a Python 3.11+ CLI that turns any repository into a fully automated
 | [uv](https://docs.astral.sh/uv/) | Fast virtualenv, installer, and project manager | **Yes** |
 | git 2.30+ | Hooks, rollback, conflict detection | **Yes** |
 | Coding agent CLI | Powers docs, commit-message, and visualize stages (auto-detects `claude`, `gh copilot`, or `cursor`) | **Yes** |
-| [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) | Architecture diagram generation — gracefully skipped when absent | Optional |
+| Understand-Anything plugin workflow | Repository graph generation and refresh (VS Code + Copilot, Claude Code) | **Yes** |
 | [speckit-cli](https://github.com/github/spec-kit) | `specify init --here --ai copilot` scaffolds the `.specify/` directory | Optional |
 | mypy | Type checking in the `typecheck` pipeline stage — skipped when absent | Optional |
 | sphinx + sphinx-rtd-theme | API docs in the `docs-api` pipeline stage — skipped when absent | Optional |
@@ -127,7 +127,7 @@ dev-stack init             # apply
 | `cliff.toml` | git-cliff configuration for changelog generation | vcs_hooks |
 | `.github/workflows/dev-stack-*.yml` | CI workflows — tests, deploy, vulnerability scan | ci_workflows |
 | `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Sphinx documentation scaffold | sphinx_docs |
-| `.codeboarding/` | CodeBoarding analysis output directory | visualization |
+| `.understand-anything/` | Committed graph artifacts (`knowledge-graph.json`, optional overlays) | visualization |
 | `.dev-stack/` | Internal state — `pipeline/` and `viz/` are gitignored; `instructions.md` and `hooks-manifest.json` are tracked | core |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation environment | docker |
 
@@ -142,7 +142,7 @@ After init, commit the generated files with `git add -A && git commit -m "chore:
 |---------|--------------|
 | `dev-stack rollback [--ref TAG]` | Restores files to the last (or specified) rollback tag and cleans up intermediate tags |
 | `dev-stack pipeline run [--force]` | Executes the 9-stage pipeline: lint → typecheck → test → security → docs-api → docs-narrative → infra-sync → visualize → commit-message |
-| `dev-stack visualize [--incremental] [--depth-level N] [--no-readme] [--timeout S]` | Generates Mermaid architecture diagrams via CodeBoarding and injects them into README files (also runs automatically as pipeline stage 8) |
+| `dev-stack visualize [--incremental] [--plugin auto\|copilot\|claude]` | Validates committed graph freshness for local/CI scopes and reports remediation when artifacts are stale or missing |
 | `dev-stack status` | Summarizes module health, detected agent, and last pipeline run |
 | `dev-stack changelog [--unreleased\|--full]` | Generates or updates `CHANGELOG.md` from conventional commits via git-cliff |
 | `dev-stack hooks status` | Shows managed hook status with checksum validation and signing configuration |
@@ -160,7 +160,7 @@ All commands support `--json` (placed before the subcommand: `dev-stack --json <
 | **APM (Agent Package Manager)** | TBD | Auto-installs Context7, GitHub, and Hugging Face for detected agent |
 | **CI Workflows** | `.github/workflows/dev-stack-{tests,deploy,vuln-scan}.yml` | Opinionated multi-job GitHub Actions CI with SHA-256 conflict detection |
 | **Docker** | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Reproducible validation with `DEV_STACK_PIP_SPEC` overrides; uv-based installation |
-| **Visualization** | `.codeboarding/`, `.dev-stack/viz/` | CodeBoarding CLI → Mermaid diagram generation + managed-marker README injection; cleans up legacy `docs/diagrams/` |
+| **Visualization** | `.understand-anything/`, `.dev-stack/viz/` | Understand-Anything artifact bootstrap + graph-impact detection + freshness policy enforcement with Git LFS checks for large graph JSON artifacts |
 | **UV Project** | `pyproject.toml`, `.python-version`, `.gitignore`, `tests/` scaffold | `uv init --package` bootstrapping with ruff, mypy, pytest, coverage, and optional-dependencies (`docs`, `dev`) pre-configured |
 | **Sphinx Docs** | `docs/conf.py`, `docs/index.rst`, `docs/Makefile` | Auto-detects package name; generates docs with `-W --keep-going` flags; appends `docs/_build/` to `.gitignore` |
 | **VCS Hooks** | `.git/hooks/commit-msg`, `.git/hooks/pre-push`, `.specify/templates/constitution-template.md`, `.dev-stack/instructions.md`, `cliff.toml` | Conventional commit linting (gitlint + custom rules), branch naming enforcement, SSH signing configuration, constitutional agent instructions, checksum-tracked hook manifests |
@@ -178,35 +178,35 @@ Dependencies are resolved automatically — for example, Sphinx Docs requires UV
 | 5 | docs-api | Hard gate | `sphinx-apidoc` + `sphinx -b html -W --keep-going` |
 | 6 | docs-narrative | Soft gate | Agent-generated narrative docs in `docs/guides/` |
 | 7 | infra-sync | Soft gate | Checksums templates vs installed hooks/config for drift detection |
-| 8 | visualize | Soft gate | Runs CodeBoarding analysis and injects Mermaid diagrams into READMEs — skips when CodeBoarding CLI is absent, `[tool.dev-stack.pipeline] visualize = false`, or no LLM API key is configured |
+| 8 | visualize | Soft gate | Validates committed `.understand-anything/knowledge-graph.json`, evaluates graph-impacting changes, and blocks stale/indeterminate graph state with remediation guidance |
 | 9 | commit-message | Soft gate | Agent-generated structured commit narrative with conventional format and required trailers (`Spec-Ref`, `Task-Ref`, `Pipeline`, etc.) — skips when user supplies `-m` message |
 
 - **Hard gates** (stages 1–5): halt the pipeline on failure — the commit is blocked.
 - **Soft gates** (stages 6–9): warn on failure but allow the commit to proceed; use `--force` to suppress warnings.
 - Stages `lint`, `test`, and `security` parallelize via `ProcessPoolExecutor` in repos with >500 files.
 - Agent-dependent stages (6, 9) skip gracefully when no coding agent CLI is detected.
-- Stage 8 (visualize) skips when CodeBoarding is not installed or visualization is disabled via config.
-- Stage 8 (visualize) requires an LLM API key. Set one of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, or `COHERE_API_KEY`. The stage skips gracefully with an actionable message when none are set.
+- Stage 8 (visualize) skips when visualization is disabled via config.
+- Stage 8 (visualize) enforces freshness in pre-commit and CI-required-check scopes and fails closed when detection is indeterminate.
 - Stage 9 (commit-message) skips when the user supplies a message via `git commit -m "..."`. User-supplied messages take precedence; the stage only generates structured messages in interactive commit mode.
 
 ## Visualization Workflow
 
-1. **Invoke** — `codeboarding_runner.py` launches the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) CLI as a subprocess with a configurable timeout (default 300 s). Pass `--depth-level N` (default 2) to control analysis depth.
-2. **Parse** — `output_parser.py` reads `.codeboarding/analysis.json`, extracts typed components and relationships, and maps each component to its target folder using longest common directory prefix.
-3. **Inject** — `readme_injector.py` writes Mermaid diagram blocks into the root `README.md` (marker: `architecture`) and per-folder READMEs (marker: `component-architecture`) using brownfield managed markers. An `InjectionLedger` tracks every injection for clean removal on uninstall.
+1. **Generate and commit baseline artifacts** — run the supported Understand-Anything plugin workflow to create `.understand-anything/knowledge-graph.json` and commit it to the repository.
+2. **Validate freshness locally** — `dev-stack --json visualize --incremental` evaluates staged changes against graph node coverage and fails if graph-impacting changes are not synchronized.
+3. **Enforce merge safety in CI** — the `dev-stack-graph-freshness` check runs `dev-stack --json visualize --incremental --no-readme` in `ci_required_check` scope so stale graph artifacts block merges.
 
 ```bash
-# Full regeneration
+# Validate current repository freshness state
 dev-stack --json visualize
 
-# Incremental — only re-analyze if source files changed
+# Validate only changed paths (typical local workflow)
 dev-stack --json visualize --incremental
 
-# Generate diagrams without injecting into READMEs
-dev-stack --json visualize --no-readme
+# Explicit plugin context for diagnostics
+dev-stack --json visualize --plugin copilot
 ```
 
-The `--incremental` flag compares SHA-256 hashes of source files against `.dev-stack/viz/manifest.json` — unchanged repos are skipped entirely.
+Graph freshness is CURRENT only when committed artifacts exist, parse successfully, detection is not indeterminate, and graph-impacting changes include synchronized `.understand-anything/` updates.
 
 ## Validation Checklist
 
@@ -216,7 +216,7 @@ Run these checks after `dev-stack init` or `dev-stack update` to confirm everyth
 2. **Modules healthy** — `dev-stack --json status` reports `healthy: true` for every installed module.
 3. **Pipeline passes** — `dev-stack --json pipeline run --force` completes stages 1–5 (hard gates) without failure.
 4. **Hooks installed** — `dev-stack --json hooks status` shows `commit-msg` and `pre-push` hooks with valid checksums.
-5. **Visualization works** — `dev-stack --json visualize` produces `.codeboarding/` output and injects Mermaid diagrams into README.
+5. **Visualization works** — `dev-stack --json visualize` reports `status: pass`, includes graph metadata (`project.name`, `analyzedAt`, `gitCommitHash`), and does not modify README content.
 6. **Config loads** — `grep 'tool.dev-stack' pyproject.toml` shows hooks, branch, and signing sections.
 7. **Brownfield safe** — `dev-stack --dry-run --json init` in an existing repo lists `conflicts` without modifying files.
 8. **Rollback available** — `git tag -l 'dev-stack/rollback/*'` shows at least one rollback tag (requires at least one commit before `dev-stack init`).
@@ -241,7 +241,7 @@ enforcement = "warn"    # "warn" (advisory) or "block" (reject unsigned commits)
 key = ""                # Path to SSH public key — auto-detected from ssh-agent when empty
 
 [tool.dev-stack.pipeline]
-visualize = true        # Auto-regenerate CodeBoarding diagrams as pipeline stage 8
+visualize = true        # Enable stage-8 graph freshness validation
 ```
 
 - **Branch naming** — The `pre-push` hook validates the current branch against the configured regex pattern. Branches in the `exempt` list are always allowed.
@@ -260,7 +260,7 @@ dev-stack/
 │   ├── brownfield/           # Conflict detection, marker utilities, rollback helpers
 │   ├── vcs/                  # Commit parsing, branch validation, PR/changelog/release, signing, scope
 │   ├── rules/                # Gitlint custom rules — conventional commits + trailers
-│   ├── visualization/        # CodeBoarding runner, output parser, README injector, incremental diffing
+│   ├── visualization/        # Understand-Anything artifact runner, graph policy, incremental diffing
 │   ├── templates/            # Vendored hooks, CI, Docker, Spec Kit, and VCS templates
 │   ├── config.py             # Agent detection + manifest loading
 │   ├── errors.py             # Structured error hierarchy
@@ -283,7 +283,7 @@ dev-stack/
 - **`src/dev_stack/brownfield/`** — Conflict detection via SHA-256 checksums, marker-delimited managed sections, interactive resolution prompts, and git tag–based rollback.
 - **`src/dev_stack/vcs/`** — Commit parsing (`git log` → typed `CommitSummary`), branch validation against configurable regex, PR description generation with AI/human stats, changelog via git-cliff, semantic release with version bumping, SSH signing configuration, and scope advisory analysis.
 - **`src/dev_stack/rules/`** — Custom gitlint rules: `ConventionalCommitRule` (validates `type(scope): description`), `TrailerPresenceRule` + `TrailerPathRule` (enforce required trailers on agent commits), and `PipelineFailureWarningRule` (non-blocking warnings for failed stages).
-- **`src/dev_stack/visualization/`** — CodeBoarding CLI runner with timeout management, `.codeboarding/analysis.json` parser that extracts Mermaid diagrams, README injector with managed markers and ledger tracking, and incremental diffing via SHA-256 file manifests.
+- **`src/dev_stack/visualization/`** — Understand-Anything artifact helpers, graph freshness policy (impact detection + storage checks), and incremental diffing utilities.
 - **`src/dev_stack/templates/`** — Vendored hook scripts, CI workflows, Docker assets, Spec Kit scaffolding, and VCS templates (cliff.toml, constitution, instructions, PR template).
 - **`tests/`** — Unit, integration, and contract suites enforcing CLI schemas, module behaviors, and pipeline correctness.
 
@@ -300,11 +300,11 @@ uv run mypy src/
 # Full test suite (unit + integration + contract)
 uv run pytest --override-ini addopts='' tests
 
-# Generate architecture diagrams
+# Validate graph freshness
 dev-stack --json visualize
 ```
 
-Before merging, rerun the [Validation Checklist](#validation-checklist) to keep hooks, pipeline, and visualization in sync.
+Before merging, rerun the [Validation Checklist](#validation-checklist) to keep hooks, pipeline, and graph freshness policy in sync.
 
 ## Troubleshooting
 

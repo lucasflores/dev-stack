@@ -114,10 +114,10 @@ class TestDocsNarrativeOutputPaths:
 class TestVisualizeOutputPaths:
     """visualize stage populates output_paths on pass."""
 
-    def test_pass_includes_codeboarding_files(self, tmp_path: Path) -> None:
-        cb_dir = tmp_path / ".codeboarding"
-        cb_dir.mkdir()
-        analysis = cb_dir / "analysis.json"
+    def test_pass_includes_understand_anything_files(self, tmp_path: Path) -> None:
+        graph_dir = tmp_path / ".understand-anything"
+        graph_dir.mkdir()
+        analysis = graph_dir / "knowledge-graph.json"
         analysis.write_text("{}")
 
         result = StageResult(

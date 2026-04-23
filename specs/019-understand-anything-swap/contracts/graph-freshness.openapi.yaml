@@ -1,0 +1,211 @@
+openapi: 3.1.0
+info:
+  title: Dev-Stack Graph Freshness Contract
+  version: 1.0.0
+  description: >-
+    Contract for local and CI validation of Understand-Anything graph artifacts
+    after replacing Codeboarding workflows.
+servers:
+  - url: https://dev-stack.local
+paths:
+  /graph/bootstrap/verify:
+    post:
+      summary: Verify initial graph artifacts exist and are parseable
+      operationId: verifyGraphBootstrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapVerifyRequest'
+      responses:
+        '200':
+          description: Graph bootstrap verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapVerifyResponse'
+  /graph/impact/evaluate:
+    post:
+      summary: Evaluate whether a change set is graph-impacting
+      operationId: evaluateGraphImpact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImpactEvaluationRequest'
+      responses:
+        '200':
+          description: Graph impact evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactEvaluationResponse'
+  /graph/freshness/validate:
+    post:
+      summary: Enforce freshness policy for local pre-commit or required CI checks
+      operationId: validateGraphFreshness
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FreshnessValidationRequest'
+      responses:
+        '200':
+          description: Freshness enforcement result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreshnessValidationResponse'
+components:
+  schemas:
+    BootstrapVerifyRequest:
+      type: object
+      required:
+        - repoRoot
+        - graphDir
+      properties:
+        repoRoot:
+          type: string
+        graphDir:
+          type: string
+          default: .understand-anything
+        requiredFiles:
+          type: array
+          items:
+            type: string
+          default:
+            - knowledge-graph.json
+    BootstrapVerifyResponse:
+      type: object
+      required:
+        - status
+        - hasKnowledgeGraph
+        - missingFiles
+      properties:
+        status:
+          type: string
+          enum: [pass, fail]
+        hasKnowledgeGraph:
+          type: boolean
+        missingFiles:
+          type: array
+          items:
+            type: string
+        project:
+          type: object
+          properties:
+            name:
+              type: string
+            analyzedAt:
+              type: string
+            gitCommitHash:
+              type: string
+    ImpactEvaluationRequest:
+      type: object
+      required:
+        - changedPaths
+        - graphNodeFilePaths
+      properties:
+        changedPaths:
+          type: array
+          items:
+            type: string
+        graphNodeFilePaths:
+          type: array
+          items:
+            type: string
+        diffOverlayPresent:
+          type: boolean
+          default: false
+        sourceFileGlobs:
+          type: array
+          items:
+            type: string
+          default:
+            - src/**
+            - tests/**
+            - scripts/**
+    ImpactEvaluationResponse:
+      type: object
+      required:
+        - detectionMode
+        - isGraphImpacting
+        - reason
+      properties:
+        detectionMode:
+          type: string
+          enum: [diff_overlay, graph_path_intersection, indeterminate]
+        isGraphImpacting:
+          type: boolean
+        matchedPaths:
+          type: array
+          items:
+            type: string
+        unmappedSourcePaths:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+    FreshnessValidationRequest:
+      type: object
+      required:
+        - enforcementScope
+        - impactEvaluation
+        - storagePolicy
+      properties:
+        enforcementScope:
+          type: string
+          enum: [pre_commit, ci_required_check]
+        requiredCheckName:
+          type: string
+          default: dev-stack-graph-freshness
+        impactEvaluation:
+          $ref: '#/components/schemas/ImpactEvaluationResponse'
+        storagePolicy:
+          type: object
+          required:
+            - maxInlineJsonBytes
+            - oversizedJsonFiles
+            - gitattributesHasLfsRule
+          properties:
+            maxInlineJsonBytes:
+              type: integer
+              default: 10485760
+            oversizedJsonFiles:
+              type: array
+              items:
+                type: string
+            gitattributesHasLfsRule:
+              type: boolean
+        graphUpdatedInChangeSet:
+          type: boolean
+    FreshnessValidationResponse:
+      type: object
+      required:
+        - status
+        - blocked
+        - remediationSteps
+      properties:
+        status:
+          type: string
+          enum: [pass, fail, indeterminate]
+        blocked:
+          type: boolean
+        requiredCheckName:
+          type: string
+          description: Required status check name used for mergeability in CI scope.
+          default: dev-stack-graph-freshness
+        freshnessState:
+          type: string
+          enum: [CURRENT, STALE, MISSING, INDETERMINATE]
+        remediationSteps:
+          type: array
+          items:
+            type: string
+        diagnostics:
+          type: object
+          additionalProperties: true

@@ -20,6 +20,7 @@ from dev_stack.pipeline.stages import (
     _execute_test_stage,
     _execute_typecheck_stage,
     _execute_docs_api_stage,
+    _execute_visualize_stage,
     build_pipeline_stages,
 )
 
@@ -725,3 +726,26 @@ class TestDocsApiStrictDocs:
         assert result.success is True
         assert follow_up_called["value"] is True
         assert [stage.stage_name for stage in result.results] == ["docs-api", "post-docs"]
+
+
+class TestVisualizeStage:
+    def test_visualize_stage_passes_with_committed_graph(self, repo_root: Path) -> None:
+        graph_dir = repo_root / ".understand-anything"
+        graph_dir.mkdir(parents=True, exist_ok=True)
+        (graph_dir / "knowledge-graph.json").write_text(
+            '{"project":{"name":"repo","analyzedAt":"2026-04-22T00:00:00Z","gitCommitHash":"abc"},"nodes":[]}',
+            encoding="utf-8",
+        )
+
+        context = StageContext(repo_root=repo_root)
+        result = _execute_visualize_stage(context)
+
+        assert result.status == StageStatus.PASS
+        assert any(path.name == "knowledge-graph.json" for path in result.output_paths)
+
+    def test_visualize_stage_fails_when_graph_missing(self, repo_root: Path) -> None:
+        context = StageContext(repo_root=repo_root)
+        result = _execute_visualize_stage(context)
+
+        assert result.status == StageStatus.FAIL
+        assert "Required graph artifact not found" in result.output

@@ -1,25 +1,22 @@
-"""Visualization CLI — CodeBoarding integration."""
+"""Visualization CLI — Understand-Anything graph freshness validation."""
 from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import click
 
-from ..errors import CodeBoardingError
+from ..errors import VisualizationError
 from ..modules.visualization import (
-    CODEBOARDING_OUTPUT_DIR,
+    KNOWLEDGE_GRAPH_FILE,
+    SUPPORTED_PLUGIN_EXPERIENCES,
+    UNDERSTAND_OUTPUT_DIR,
     DEFAULT_DEPTH_LEVEL,
     DEFAULT_TIMEOUT_SECONDS,
-    INJECTION_LEDGER,
 )
-from ..visualization import codeboarding_runner
-from ..visualization.output_parser import extract_mermaid, parse_components
-from ..visualization.readme_injector import (
-    InjectionLedger,
-    inject_root_diagram,
-)
+from ..visualization import graph_policy, understand_runner
 from .main import CLIContext, ExitCode, cli
 
 logger = logging.getLogger(__name__)
@@ -32,15 +29,26 @@ logger = logging.getLogger(__name__)
     type=int,
     default=DEFAULT_DEPTH_LEVEL,
     show_default=True,
-    help="Number of decomposition levels (1 = top-level only).",
+    help="Compatibility option retained for existing workflows.",
 )
-@click.option("--no-readme", is_flag=True, help="Run analysis without injecting diagrams into READMEs.")
+@click.option(
+    "--no-readme",
+    is_flag=True,
+    help="Compatibility option retained; README injection is no longer performed.",
+)
 @click.option(
     "--timeout",
     type=int,
     default=DEFAULT_TIMEOUT_SECONDS,
     show_default=True,
-    help="Subprocess timeout in seconds for CodeBoarding CLI.",
+    help="Compatibility option retained for existing workflows.",
+)
+@click.option(
+    "--plugin",
+    type=str,
+    default="auto",
+    show_default=True,
+    help="Plugin workflow context (auto, copilot, claude).",
 )
 @click.pass_obj
 def visualize(
@@ -49,161 +57,165 @@ def visualize(
     depth_level: int,
     no_readme: bool,
     timeout: int,
+    plugin: str,
 ) -> None:
-    """Generate architecture diagrams via CodeBoarding and inject into READMEs."""
+    """Validate committed Understand-Anything artifacts and freshness policy."""
 
     repo_root = Path.cwd()
-    cb_dir = repo_root / CODEBOARDING_OUTPUT_DIR
+    graph_dir = repo_root / UNDERSTAND_OUTPUT_DIR
+    enforcement_scope = _resolve_enforcement_scope()
+    warnings: list[str] = []
 
-    # ------------------------------------------------------------------
-    # Step 1: Verify CLI availability
-    # ------------------------------------------------------------------
+    del depth_level  # Compatibility option
+    del no_readme  # Compatibility option
+    del timeout  # Compatibility option
 
-    if not codeboarding_runner.check_cli_available():
+    requested_plugin = (os.environ.get("DEV_STACK_PLUGIN") or plugin).strip().lower()
+    if requested_plugin not in ("auto", *SUPPORTED_PLUGIN_EXPERIENCES):
+        warnings.append(
+            "Unsupported plugin workflow "
+            f"'{requested_plugin}'. Supported values: {', '.join(SUPPORTED_PLUGIN_EXPERIENCES)}."
+        )
+
+    bootstrap = understand_runner.verify_bootstrap(repo_root)
+    if bootstrap.status != "pass":
+        missing = ", ".join(bootstrap.missing_files) if bootstrap.missing_files else KNOWLEDGE_GRAPH_FILE
         _emit_error(
             ctx,
-            "CodeBoarding CLI not found on PATH.\nInstall via: pip install codeboarding\nThen run: codeboarding-setup",
-            exit_code=ExitCode.AGENT_UNAVAILABLE,
+            (
+                "Required graph artifacts are missing or invalid. "
+                f"Expected under {UNDERSTAND_OUTPUT_DIR}/ ({missing})."
+            ),
+            exit_code=ExitCode.GENERAL_ERROR,
+            details={
+                "enforcement_scope": enforcement_scope,
+                "missing_files": bootstrap.missing_files,
+                "output_dir": str(UNDERSTAND_OUTPUT_DIR),
+            },
+            warnings=warnings,
         )
-        raise SystemExit(ExitCode.AGENT_UNAVAILABLE)
-
-    # ------------------------------------------------------------------
-    # Step 2: Incremental gate (if requested)
-    # ------------------------------------------------------------------
-
-    from ..visualization.incremental import ManifestStore
-    from ..visualization.scanner import SourceScanner
-
-    manifest_store = ManifestStore(repo_root)
-
-    if incremental:
-        scanner = SourceScanner(repo_root)
-        scan_result = scanner.scan()
-        previous = manifest_store.load_manifest()
-        current = manifest_store.build_manifest(scan_result.snapshots)
-        changed_paths = manifest_store.changed_paths(previous, current)
-
-        if not changed_paths:
-            payload = {
-                "status": "success",
-                "skipped": True,
-                "reason": "No files changed since last run",
-                "files_scanned": len(current.files),
-                "files_changed": 0,
-                "incremental": True,
-            }
-            if ctx.json_output:
-                click.echo(json.dumps(payload))
-            else:
-                click.echo("All diagrams up to date (no files changed).")
-            return
-
-    # ------------------------------------------------------------------
-    # Step 3: Invoke CodeBoarding
-    # ------------------------------------------------------------------
+        raise SystemExit(ExitCode.GENERAL_ERROR)
 
     try:
-        result = codeboarding_runner.run(
+        report = graph_policy.evaluate_repository_graph_freshness(
             repo_root,
-            depth_level=depth_level,
-            incremental=incremental,
-            timeout=timeout,
+            enforcement_scope=enforcement_scope,
+            staged=enforcement_scope == "pre_commit",
         )
-    except CodeBoardingError as exc:
-        _emit_error(ctx, str(exc), exit_code=ExitCode.GENERAL_ERROR)
+    except VisualizationError as exc:
+        _emit_error(
+            ctx,
+            str(exc),
+            exit_code=ExitCode.GENERAL_ERROR,
+            details={"enforcement_scope": enforcement_scope},
+            warnings=warnings,
+        )
         raise SystemExit(ExitCode.GENERAL_ERROR)
 
-    if not result.success:
-        msg = f"CodeBoarding exited with code {result.return_code}:\n{result.stderr}"
-        _emit_error(ctx, msg, exit_code=ExitCode.GENERAL_ERROR)
-        raise SystemExit(ExitCode.GENERAL_ERROR)
-
-    # ------------------------------------------------------------------
-    # Step 4: Parse output
-    # ------------------------------------------------------------------
-
-    try:
-        components = parse_components(cb_dir)
-    except CodeBoardingError as exc:
-        _emit_error(ctx, str(exc), exit_code=ExitCode.GENERAL_ERROR)
-        raise SystemExit(ExitCode.GENERAL_ERROR)
-
-    # Extract overview Mermaid
-    overview_mermaid = extract_mermaid(cb_dir / "overview.md")
-    warnings: list[str] = []
-    if overview_mermaid is None:
-        warnings.append("No Mermaid diagram found in .codeboarding/overview.md")
-
-    # ------------------------------------------------------------------
-    # Step 5 & 6: Inject diagrams (unless --no-readme)
-    # ------------------------------------------------------------------
-
-    readmes_modified: list[str] = []
-    diagrams_injected = 0
-    ledger = InjectionLedger.load(cb_dir / INJECTION_LEDGER)
-    ledger.clear()
-
-    if not no_readme and overview_mermaid:
-        if inject_root_diagram(repo_root, overview_mermaid, ledger):
-            readmes_modified.append("README.md")
-        diagrams_injected += 1
-
-    # Sub-diagrams (Phase 5 will wire inject_component_diagrams here)
-    if not no_readme:
-        from ..visualization.readme_injector import inject_component_diagrams
-
-        comp_result = inject_component_diagrams(repo_root, components, ledger)
-        diagrams_injected += comp_result["diagrams_injected"]
-        readmes_modified.extend(comp_result["readmes_modified"])
-
-    # ------------------------------------------------------------------
-    # Step 7: Save ledger and manifest
-    # ------------------------------------------------------------------
-
-    if not no_readme:
-        ledger.save(cb_dir / INJECTION_LEDGER)
-
-    # Always save manifest for future incremental comparisons
-    try:
-        scanner = SourceScanner(repo_root)
-        scan_result = scanner.scan()
-        current = manifest_store.build_manifest(scan_result.snapshots)
-        manifest_store.save_manifest(current)
-    except Exception:  # pragma: no cover
-        logger.warning("Failed to save manifest for incremental tracking")
-
-    # ------------------------------------------------------------------
-    # Step 8: Report results
-    # ------------------------------------------------------------------
+    if incremental and not report.changed_paths:
+        payload = {
+            "status": "success",
+            "skipped": True,
+            "reason": "No changed paths detected for freshness evaluation.",
+            "incremental": True,
+            "enforcement_scope": enforcement_scope,
+            "output_dir": str(UNDERSTAND_OUTPUT_DIR),
+            "warnings": warnings,
+        }
+        if ctx.json_output:
+            click.echo(json.dumps(payload))
+        else:
+            click.echo("Graph freshness check skipped: no changed paths detected.")
+            for warning in warnings:
+                click.echo(f"Warning: {warning}")
+        return
 
     payload = {
-        "status": "success",
-        "depth_level": depth_level,
-        "components_found": len(components),
-        "diagrams_injected": diagrams_injected,
-        "readmes_modified": readmes_modified,
+        "status": "pass" if not report.outcome.blocked else report.outcome.status,
+        "enforcement_scope": enforcement_scope,
+        "freshness_state": report.outcome.freshness_state.value,
+        "blocked": report.outcome.blocked,
         "incremental": incremental,
         "skipped": False,
-        "codeboarding_output": str(CODEBOARDING_OUTPUT_DIR),
+        "output_dir": str(UNDERSTAND_OUTPUT_DIR),
+        "changed_paths": report.changed_paths,
+        "graph_updated_in_change_set": report.graph_updated_in_change_set,
+        "detection_mode": report.impact_evaluation.detection_mode,
+        "is_graph_impacting": report.impact_evaluation.is_graph_impacting,
+        "matched_paths": report.impact_evaluation.matched_paths,
+        "unmapped_source_paths": report.impact_evaluation.unmapped_source_paths,
+        "storage_violations": report.storage_policy.violations,
+        "oversized_json_files": report.storage_policy.oversized_json_files,
+        "project": {
+            "name": report.bundle.project_name,
+            "analyzedAt": report.bundle.analyzed_at,
+            "gitCommitHash": report.bundle.git_commit_hash,
+        },
         "warnings": warnings,
     }
+
+    if report.outcome.blocked:
+        _emit_error(
+            ctx,
+            report.impact_evaluation.reason,
+            exit_code=ExitCode.GENERAL_ERROR,
+            details={
+                **payload,
+                "status": report.outcome.status,
+                "remediation_steps": report.outcome.remediation_steps,
+                "diagnostics": report.outcome.diagnostics,
+            },
+            warnings=warnings,
+        )
+        raise SystemExit(ExitCode.GENERAL_ERROR)
 
     if ctx.json_output:
         click.echo(json.dumps(payload))
     else:
-        click.echo(f"Visualization complete:")
-        click.echo(f"  Components: {len(components)} found")
-        click.echo(f"  Diagrams: {diagrams_injected} injected")
-        if readmes_modified:
-            click.echo("  READMEs modified:")
-            for r in readmes_modified:
-                click.echo(f"    - {r}")
-        for w in warnings:
-            click.echo(f"  Warning: {w}")
+        click.echo("Graph freshness validation passed.")
+        click.echo(f"  Scope: {enforcement_scope}")
+        click.echo(f"  Detection mode: {report.impact_evaluation.detection_mode}")
+        click.echo(f"  Graph impacting: {report.impact_evaluation.is_graph_impacting}")
+        click.echo(f"  Project: {report.bundle.project_name or 'unknown'}")
+        click.echo(f"  Graph analyzedAt: {report.bundle.analyzed_at or 'unknown'}")
+        click.echo(f"  Graph gitCommitHash: {report.bundle.git_commit_hash or 'unknown'}")
+        if report.storage_policy.oversized_json_files:
+            click.echo("  Oversized graph JSON files:")
+            for path in report.storage_policy.oversized_json_files:
+                click.echo(f"    - {path}")
+        for warning in warnings:
+            click.echo(f"  Warning: {warning}")
 
 
-def _emit_error(ctx: CLIContext, message: str, *, exit_code: int = 1) -> None:
+def _resolve_enforcement_scope() -> str:
+    raw = os.environ.get("DEV_STACK_GRAPH_SCOPE", "pre_commit").strip().lower()
+    if raw in {"pre_commit", "ci_required_check"}:
+        return raw
+    logger.warning("Unknown DEV_STACK_GRAPH_SCOPE=%r, defaulting to pre_commit", raw)
+    return "pre_commit"
+
+
+def _emit_error(
+    ctx: CLIContext,
+    message: str,
+    *,
+    exit_code: int = 1,
+    details: dict[str, object] | None = None,
+    warnings: list[str] | None = None,
+) -> None:
     if ctx.json_output:
-        click.echo(json.dumps({"status": "error", "message": message, "exit_code": exit_code}))
+        payload: dict[str, object] = {
+            "status": "error",
+            "message": message,
+            "exit_code": exit_code,
+        }
+        if details:
+            for key, value in details.items():
+                if key in {"status", "message", "exit_code"}:
+                    continue
+                payload[key] = value
+        if warnings:
+            payload["warnings"] = warnings
+        click.echo(json.dumps(payload))
     else:
         click.echo(f"Error: {message}", err=True)

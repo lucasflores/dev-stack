@@ -1,6 +1,6 @@
 # Feature Specification: Soften Sphinx `-W` for Brownfield Projects
 
-**Feature Branch**: `[001-soften-sphinx-warnings]`  
+**Feature Branch**: `[018-soften-sphinx-warnings]`  
 **Created**: 2026-04-21  
 **Status**: Draft  
 **Input**: User description: "Soften Sphinx `-W` for Brownfield Projects"

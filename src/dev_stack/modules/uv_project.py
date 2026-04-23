@@ -216,8 +216,8 @@ _STANDARD_GITIGNORE_ENTRIES = [
     ".ruff_cache/",
     ".pytest_cache/",
     ".venv/",
-    ".codeboarding/cache/",
-    ".codeboarding/logs/",
+    ".understand-anything/intermediate/",
+    ".understand-anything/diff-overlay.json",
     "dist/",
     "*.egg-info/",
 ]

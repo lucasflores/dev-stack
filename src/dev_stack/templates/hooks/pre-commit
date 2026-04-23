@@ -29,8 +29,13 @@ fi
 
 export DEV_STACK_HOOK_CONTEXT=pre-commit
 
-if dev-stack hooks --help >/dev/null 2>&1; then
-  dev-stack hooks run pre-commit "$@"
-else
-  echo "$HOOK_LABEL: hooks command unavailable; skipping" >&2
-fi
+python3 - <<'PY'
+import sys
+
+try:
+    from dev_stack.vcs.hooks_runner import run_pre_commit_hook
+except ImportError:
+    sys.exit(0)
+
+sys.exit(run_pre_commit_hook())
+PY

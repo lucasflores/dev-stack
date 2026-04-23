@@ -62,7 +62,6 @@ def visualize(
     """Validate committed Understand-Anything artifacts and freshness policy."""
 
     repo_root = Path.cwd()
-    graph_dir = repo_root / UNDERSTAND_OUTPUT_DIR
     enforcement_scope = _resolve_enforcement_scope()
     warnings: list[str] = []
 
@@ -77,7 +76,21 @@ def visualize(
             f"'{requested_plugin}'. Supported values: {', '.join(SUPPORTED_PLUGIN_EXPERIENCES)}."
         )
 
-    bootstrap = understand_runner.verify_bootstrap(repo_root)
+    try:
+        bootstrap = understand_runner.verify_bootstrap(repo_root)
+    except VisualizationError as exc:
+        _emit_error(
+            ctx,
+            str(exc),
+            exit_code=ExitCode.GENERAL_ERROR,
+            details={
+                "enforcement_scope": enforcement_scope,
+                "output_dir": str(UNDERSTAND_OUTPUT_DIR),
+            },
+            warnings=warnings,
+        )
+        raise SystemExit(ExitCode.GENERAL_ERROR)
+
     if bootstrap.status != "pass":
         missing = ", ".join(bootstrap.missing_files) if bootstrap.missing_files else KNOWLEDGE_GRAPH_FILE
         _emit_error(

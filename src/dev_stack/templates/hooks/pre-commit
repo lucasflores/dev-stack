@@ -29,13 +29,4 @@ fi
 
 export DEV_STACK_HOOK_CONTEXT=pre-commit
 
-python3 - <<'PY'
-import sys
-
-try:
-    from dev_stack.vcs.hooks_runner import run_pre_commit_hook
-except ImportError:
-    sys.exit(0)
-
-sys.exit(run_pre_commit_hook())
-PY
+exec dev-stack hooks run pre-commit "$@"

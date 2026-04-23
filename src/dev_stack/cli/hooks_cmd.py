@@ -116,6 +116,32 @@ def hooks_status(ctx: CLIContext) -> None:
         _emit_human_hooks_status(payload)
 
 
+@hooks_group.command("run")
+@click.argument("hook_name", type=click.Choice(("pre-commit", "prepare-commit-msg")))
+@click.argument("hook_args", nargs=-1)
+def hooks_run(hook_name: str, hook_args: tuple[str, ...]) -> None:
+    """Run managed hook logic via the active dev-stack CLI environment."""
+
+    from ..vcs.hooks_runner import run_pre_commit_hook, run_prepare_commit_msg_hook
+
+    if hook_name == "pre-commit":
+        raise SystemExit(run_pre_commit_hook())
+
+    message_file = hook_args[0] if hook_args else ""
+    if not message_file:
+        raise click.UsageError("hooks run prepare-commit-msg requires <message-file> argument")
+
+    source = hook_args[1] if len(hook_args) > 1 else None
+    commit_sha = hook_args[2] if len(hook_args) > 2 else None
+    raise SystemExit(
+        run_prepare_commit_msg_hook(
+            message_file,
+            source=source,
+            commit_sha=commit_sha,
+        )
+    )
+
+
 def _emit_human_hooks_status(payload: dict[str, Any]) -> None:
     """Render hooks status in human-readable format."""
     click.echo("Hook Status")

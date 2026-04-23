@@ -94,6 +94,24 @@ class TestVisualizeCommand:
         assert payload["status"] == "error"
         assert "missing" in payload["message"].lower()
 
+    def test_invalid_bootstrap_graph_emits_structured_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Malformed graph JSON must emit CLI-structured error output."""
+
+        monkeypatch.chdir(tmp_path)
+        graph_dir = tmp_path / UNDERSTAND_OUTPUT_DIR
+        graph_dir.mkdir(parents=True, exist_ok=True)
+        (graph_dir / KNOWLEDGE_GRAPH_FILE).write_text("{invalid-json", encoding="utf-8")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "visualize"])
+
+        assert result.exit_code == 1
+        payload = json.loads(result.output)
+        assert payload["status"] == "error"
+        assert "Failed to parse" in payload["message"]
+
     def test_codeboarding_failure_exits_code_1(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Graph-impacting changes without synced graph updates block validation."""
 

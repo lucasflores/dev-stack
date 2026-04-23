@@ -282,8 +282,11 @@ def evaluate_storage_policy(
     has_lfs_rule = _has_lfs_rule(repo_root)
     violations: list[str] = []
     if oversized and not has_lfs_rule:
+        threshold_mb = max_inline_json_bytes / (1024 * 1024)
         violations.append(
-            "Large graph JSON artifacts exceed 10 MB but .gitattributes is missing the .understand-anything/*.json LFS rule."
+            "Large graph JSON artifacts exceed configured inline threshold "
+            f"({max_inline_json_bytes} bytes / {threshold_mb:.2f} MB) but "
+            ".gitattributes is missing the .understand-anything/*.json LFS rule."
         )
 
     return GraphStoragePolicy(

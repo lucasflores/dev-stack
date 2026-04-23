@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -147,3 +148,27 @@ class TestPrepareCommitMsgHookInstallation:
 
         assert (HOOK_TEMPLATE_DIR / "prepare-commit-msg").exists()
         assert (HOOK_TEMPLATE_DIR / "prepare-commit-msg.py").exists()
+
+
+class TestHooksRunCommand:
+    def test_pre_commit_dispatches_to_hooks_runner(self, runner: CliRunner) -> None:
+        with patch("dev_stack.vcs.hooks_runner.run_pre_commit_hook", return_value=0) as mocked:
+            result = runner.invoke(cli, ["hooks", "run", "pre-commit"], catch_exceptions=False)
+
+        assert result.exit_code == 0
+        mocked.assert_called_once_with()
+
+    def test_prepare_commit_msg_dispatches_to_hooks_runner(self, runner: CliRunner) -> None:
+        with patch("dev_stack.vcs.hooks_runner.run_prepare_commit_msg_hook", return_value=0) as mocked:
+            result = runner.invoke(
+                cli,
+                ["hooks", "run", "prepare-commit-msg", "COMMIT_EDITMSG"],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 0
+        mocked.assert_called_once_with("COMMIT_EDITMSG", source=None, commit_sha=None)
+
+    def test_prepare_commit_msg_requires_message_file(self, runner: CliRunner) -> None:
+        result = runner.invoke(cli, ["hooks", "run", "prepare-commit-msg"], catch_exceptions=False)
+        assert result.exit_code == 2

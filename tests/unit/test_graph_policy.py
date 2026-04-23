@@ -67,6 +67,7 @@ def test_evaluate_storage_policy_requires_lfs_for_large_json(tmp_path: Path) -> 
     assert policy.requires_lfs is True
     assert policy.gitattributes_has_lfs_rule is False
     assert policy.violations
+    assert "100 bytes" in policy.violations[0]
 
 
 def test_validate_graph_freshness_blocks_stale_changes() -> None:

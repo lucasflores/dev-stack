@@ -1,4 +1,9 @@
-"""README injection and ledger management for visualization diagrams."""
+"""Legacy README injection helpers.
+
+These utilities are intentionally decoupled from the active `dev-stack
+visualize` command, which now validates Understand-Anything graph freshness
+without writing static diagram sections to README files.
+"""
 from __future__ import annotations
 
 import json

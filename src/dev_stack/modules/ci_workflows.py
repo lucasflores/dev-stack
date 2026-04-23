@@ -82,6 +82,7 @@ class CIWorkflowsModule(ModuleBase):
     def verify(self) -> ModuleStatus:
         missing: list[str] = []
         justification_issues: list[str] = []
+        freshness_check_issues: list[str] = []
         for filename in WORKFLOW_TEMPLATES:
             target = self.repo_root / WORKFLOWS_DIR / filename
             if not target.exists():
@@ -90,12 +91,19 @@ class CIWorkflowsModule(ModuleBase):
             contents = target.read_text(encoding="utf-8")
             if "Cloud justification" not in contents:
                 justification_issues.append(filename)
-        healthy = not missing and not justification_issues
+            if filename == "dev-stack-tests.yml" and "dev-stack-graph-freshness" not in contents:
+                freshness_check_issues.append(filename)
+        healthy = not missing and not justification_issues and not freshness_check_issues
         issues: list[str] = []
         if missing:
             issues.append(f"Missing workflows: {', '.join(missing)}")
         if justification_issues:
             issues.append(f"Missing justification comments: {', '.join(justification_issues)}")
+        if freshness_check_issues:
+            issues.append(
+                "Missing required graph freshness check job 'dev-stack-graph-freshness' in: "
+                + ", ".join(freshness_check_issues)
+            )
         return ModuleStatus(
             name=self.NAME,
             installed=not missing,

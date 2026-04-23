@@ -1,7 +1,7 @@
 # Implementation Plan: Soften Sphinx `-W` for Brownfield Projects
 
-**Branch**: `001-soften-sphinx-warnings` | **Date**: 2026-04-21 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `/specs/001-soften-sphinx-warnings/spec.md`
+**Branch**: `018-soften-sphinx-warnings` | **Date**: 2026-04-21 | **Spec**: [spec.md](spec.md)
+**Input**: Feature specification from `/specs/018-soften-sphinx-warnings/spec.md`
 
 ## Summary
 
@@ -41,7 +41,7 @@ Enforce a single docs strictness policy source (`[tool.dev-stack.pipeline] stric
 ### Documentation (this feature)
 
 ```text
-specs/001-soften-sphinx-warnings/
+specs/018-soften-sphinx-warnings/
 ├── plan.md
 ├── research.md
 ├── data-model.md

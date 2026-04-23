@@ -751,11 +751,7 @@ def _is_visualization_enabled(context: StageContext) -> bool:
 
 
 def _execute_visualize_stage(context: StageContext) -> StageResult:
-    """Run CodeBoarding analysis and inject Mermaid diagrams into READMEs.
-
-    Soft gate — skips gracefully when CodeBoarding is absent or visualization
-    is disabled via config.
-    """
+    """Validate committed Understand-Anything graph freshness policy."""
     start = time.perf_counter()
 
     if not _is_visualization_enabled(context):
@@ -777,79 +773,22 @@ def _execute_visualize_stage(context: StageContext) -> StageResult:
             skipped_reason="visualization module not installed",
         )
 
-    from ..visualization.codeboarding_runner import check_cli_available, run as cb_run
-    from ..visualization.output_parser import parse_components
-    from ..visualization.readme_injector import (
-        InjectionLedger,
-        inject_component_diagrams,
-        inject_root_diagram,
-    )
+    from ..errors import VisualizationError
+    from ..visualization import graph_policy
+    from ..visualization.understand_runner import UNDERSTAND_OUTPUT_DIR
 
-    if not check_cli_available():
-        return StageResult(
-            stage_name="visualize",
-            status=StageStatus.SKIP,
-            failure_mode=FailureMode.SOFT,
-            duration_ms=_elapsed_ms(start),
-            skipped_reason="CodeBoarding CLI not found — install with: pip install codeboarding",
-        )
+    staged = (context.hook_context or os.environ.get("DEV_STACK_HOOK_CONTEXT", "")).lower() == "pre-commit"
+    scope = "pre_commit" if staged else "ci_required_check"
 
-    if not _has_llm_api_key():
-        key_names = ", ".join(LLM_API_KEY_VARS)
-        return StageResult(
-            stage_name="visualize",
-            status=StageStatus.SKIP,
-            failure_mode=FailureMode.SOFT,
-            duration_ms=_elapsed_ms(start),
-            skipped_reason=f"No LLM API key found. Set one of: {key_names}",
-        )
-
-    outputs: list[str] = []
+    outputs: list[str] = [f"scope={scope}"]
     try:
-        result = cb_run(context.repo_root, incremental=True)
-        outputs.append(f"CodeBoarding: {'ok' if result.success else 'failed'}")
-        if not result.success:
-            outputs.append(result.stderr or result.stdout)
-            return StageResult(
-                stage_name="visualize",
-                status=StageStatus.FAIL,
-                failure_mode=FailureMode.SOFT,
-                duration_ms=_elapsed_ms(start),
-                output="\n".join(outputs),
-            )
-
-        codeboarding_dir = context.repo_root / ".codeboarding"
-        if not codeboarding_dir.is_dir():
-            return StageResult(
-                stage_name="visualize",
-                status=StageStatus.WARN,
-                failure_mode=FailureMode.SOFT,
-                duration_ms=_elapsed_ms(start),
-                output="CodeBoarding ran but .codeboarding/ directory not found",
-            )
-
-        components = parse_components(codeboarding_dir)
-        ledger_path = context.repo_root / ".dev-stack" / "viz" / "injection-ledger.json"
-        ledger = InjectionLedger.load(ledger_path)
-
-        # Inject root architecture diagram from the first mermaid found
-        root_mermaid = None
-        for comp in components:
-            if comp.mermaid:
-                root_mermaid = comp.mermaid
-                break
-
-        if root_mermaid:
-            inject_root_diagram(context.repo_root, root_mermaid, ledger)
-
-        stats = inject_component_diagrams(context.repo_root, components, ledger)
-        ledger.save(ledger_path)
-
-        outputs.append(f"Diagrams injected: {stats.get('diagrams_injected', 0)}")
-        outputs.append(f"READMEs modified: {len(stats.get('readmes_modified', []))}")
-
-    except Exception as exc:
-        outputs.append(f"Error: {exc}")
+        report = graph_policy.evaluate_repository_graph_freshness(
+            context.repo_root,
+            enforcement_scope=scope,
+            staged=staged,
+        )
+    except VisualizationError as exc:
+        outputs.append(f"error={exc}")
         return StageResult(
             stage_name="visualize",
             status=StageStatus.FAIL,
@@ -858,9 +797,27 @@ def _execute_visualize_stage(context: StageContext) -> StageResult:
             output="\n".join(outputs),
         )
 
+    outputs.append(f"detection_mode={report.impact_evaluation.detection_mode}")
+    outputs.append(f"graph_impacting={report.impact_evaluation.is_graph_impacting}")
+    outputs.append(f"changed_paths={len(report.changed_paths)}")
+    outputs.append(f"freshness_state={report.outcome.freshness_state.value}")
+    if report.storage_policy.oversized_json_files:
+        outputs.append("oversized_json=" + ",".join(report.storage_policy.oversized_json_files))
+
+    if report.outcome.blocked:
+        outputs.append("remediation=" + " | ".join(report.outcome.remediation_steps))
+        return StageResult(
+            stage_name="visualize",
+            status=StageStatus.FAIL,
+            failure_mode=FailureMode.SOFT,
+            duration_ms=_elapsed_ms(start),
+            output="\n".join(outputs),
+        )
+
+    graph_dir = context.repo_root / UNDERSTAND_OUTPUT_DIR
     viz_output_paths: list[Path] = []
-    if codeboarding_dir.is_dir():
-        viz_output_paths.extend(sorted(codeboarding_dir.iterdir()))
+    if graph_dir.is_dir():
+        viz_output_paths.extend(sorted(graph_dir.iterdir()))
 
     return StageResult(
         stage_name="visualize",

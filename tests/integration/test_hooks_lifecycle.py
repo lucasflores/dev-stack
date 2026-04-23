@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from dev_stack.modules.vcs_hooks import VcsHooksModule
+from dev_stack.pipeline.stages import FailureMode, StageResult, StageStatus
 
 
 @pytest.fixture
@@ -145,3 +146,81 @@ class TestPrepareCommitMsgHookLifecycle:
         msg_file.write_text("amend message\n")
         result = run_prepare_commit_msg_hook(str(msg_file), source="commit", commit_sha="abc123")
         assert result == 0
+
+
+class TestPreCommitGraphFreshness:
+    def _write_graph(self, repo_root: Path) -> None:
+        graph_dir = repo_root / ".understand-anything"
+        graph_dir.mkdir(parents=True, exist_ok=True)
+        (graph_dir / "knowledge-graph.json").write_text(
+            '{"project":{"name":"repo","analyzedAt":"2026-04-22T00:00:00Z","gitCommitHash":"abc"},"nodes":[{"filePath":"src/app.py"}]}',
+            encoding="utf-8",
+        )
+
+    def _pass_stage(self, name: str) -> StageResult:
+        return StageResult(
+            stage_name=name,
+            status=StageStatus.PASS,
+            failure_mode=FailureMode.HARD,
+            duration_ms=1,
+            output="ok",
+        )
+
+    def test_pre_commit_blocks_when_graph_is_stale(self, git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from dev_stack.vcs.hooks_runner import run_pre_commit_hook
+
+        self._write_graph(git_repo)
+        src_dir = git_repo / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "app.py").write_text("print('changed')\n", encoding="utf-8")
+
+        subprocess.run(["git", "add", "src/app.py", ".understand-anything/knowledge-graph.json"], cwd=git_repo, check=True)
+
+        # Make graph stale by staging only source change after baseline graph commit.
+        subprocess.run(["git", "commit", "-m", "chore: seed graph"], cwd=git_repo, check=True)
+        (src_dir / "app.py").write_text("print('stale change')\n", encoding="utf-8")
+        subprocess.run(["git", "add", "src/app.py"], cwd=git_repo, check=True)
+
+        monkeypatch.chdir(git_repo)
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._execute_lint_stage",
+            lambda ctx: self._pass_stage("lint"),
+        )
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._execute_typecheck_stage",
+            lambda ctx: self._pass_stage("typecheck"),
+        )
+
+        assert run_pre_commit_hook() == 1
+
+    def test_pre_commit_passes_when_graph_update_is_staged(
+        self, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dev_stack.vcs.hooks_runner import run_pre_commit_hook
+
+        self._write_graph(git_repo)
+        src_dir = git_repo / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "app.py").write_text("print('v1')\n", encoding="utf-8")
+
+        subprocess.run(["git", "add", "src/app.py", ".understand-anything/knowledge-graph.json"], cwd=git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "chore: seed graph"], cwd=git_repo, check=True)
+
+        (src_dir / "app.py").write_text("print('v2')\n", encoding="utf-8")
+        (git_repo / ".understand-anything" / "knowledge-graph.json").write_text(
+            '{"project":{"name":"repo","analyzedAt":"2026-04-22T00:00:01Z","gitCommitHash":"def"},"nodes":[{"filePath":"src/app.py"}]}',
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "add", "src/app.py", ".understand-anything/knowledge-graph.json"], cwd=git_repo, check=True)
+
+        monkeypatch.chdir(git_repo)
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._execute_lint_stage",
+            lambda ctx: self._pass_stage("lint"),
+        )
+        monkeypatch.setattr(
+            "dev_stack.pipeline.stages._execute_typecheck_stage",
+            lambda ctx: self._pass_stage("typecheck"),
+        )
+
+        assert run_pre_commit_hook() == 0

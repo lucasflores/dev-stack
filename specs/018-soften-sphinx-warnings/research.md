@@ -1,6 +1,6 @@
 # Research: Soften Sphinx `-W` for Brownfield Projects
 
-**Feature**: `001-soften-sphinx-warnings`  
+**Feature**: `018-soften-sphinx-warnings`  
 **Date**: 2026-04-21
 
 ## R-001: Canonical Docs Strictness Source

@@ -1,6 +1,6 @@
 # Quickstart: Soften Sphinx `-W` for Brownfield Projects
 
-**Feature**: `001-soften-sphinx-warnings`
+**Feature**: `018-soften-sphinx-warnings`
 
 ## What This Validates
 

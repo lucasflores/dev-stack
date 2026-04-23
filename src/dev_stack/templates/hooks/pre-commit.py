@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # managed by dev-stack — do not edit manually
-"""Run lint and typecheck pipeline stages as a pre-commit check."""
+"""Run pre-commit quality gates including graph freshness validation."""
 import os
 import sys
 

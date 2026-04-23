@@ -1,6 +1,6 @@
 # Internal Contract: Docs Strictness Policy
 
-**Feature**: `001-soften-sphinx-warnings`  
+**Feature**: `018-soften-sphinx-warnings`  
 **Scope**: `docs-api` pipeline stage + Sphinx Makefile generation
 
 ## Contracted Functions

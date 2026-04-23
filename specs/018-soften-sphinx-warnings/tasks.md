@@ -1,6 +1,6 @@
 # Tasks: Soften Sphinx `-W` for Brownfield Projects
 
-**Input**: Design documents from `/specs/001-soften-sphinx-warnings/`  
+**Input**: Design documents from `/specs/018-soften-sphinx-warnings/`  
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/, quickstart.md
 
 **Tests**: Included. Automated coverage is explicitly required by FR-008.
@@ -114,11 +114,11 @@
 
 **Purpose**: Final validation and documentation updates across all stories.
 
-- [X] T026 [P] Update feature validation steps and expected outputs in specs/001-soften-sphinx-warnings/quickstart.md
-- [X] T027 [P] Synchronize strictness contract examples with final behavior in specs/001-soften-sphinx-warnings/contracts/docs-strictness-policy.md
-- [X] T028 Run targeted docs strictness regression commands and record verification notes in specs/001-soften-sphinx-warnings/quickstart.md
+- [X] T026 [P] Update feature validation steps and expected outputs in specs/018-soften-sphinx-warnings/quickstart.md
+- [X] T027 [P] Synchronize strictness contract examples with final behavior in specs/018-soften-sphinx-warnings/contracts/docs-strictness-policy.md
+- [X] T028 Run targeted docs strictness regression commands and record verification notes in specs/018-soften-sphinx-warnings/quickstart.md
 - [X] T029 [P] Add unit regression tests for docs-api skip behavior when `docs/` is missing and when Sphinx tooling is unavailable in tests/unit/test_pipeline_stages.py
-- [X] T030 Run non-doc pipeline regression subset (lint/typecheck/test/security paths) and record unchanged-stage outcomes in specs/001-soften-sphinx-warnings/quickstart.md
+- [X] T030 Run non-doc pipeline regression subset (lint/typecheck/test/security paths) and record unchanged-stage outcomes in specs/018-soften-sphinx-warnings/quickstart.md
 
 ---
 

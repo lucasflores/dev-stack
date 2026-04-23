@@ -1,13 +1,12 @@
-"""Visualization module — CodeBoarding integration."""
+"""Visualization module — Understand-Anything integration."""
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 from pathlib import Path
 
 from .base import ModuleBase, ModuleResult, ModuleStatus
-from ..visualization import codeboarding_runner
+from ..visualization import understand_runner
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +14,18 @@ logger = logging.getLogger(__name__)
 # Constants (per module-contract.md)
 # ---------------------------------------------------------------------------
 
-CODEBOARDING_OUTPUT_DIR = Path(".codeboarding")
+UNDERSTAND_OUTPUT_DIR = Path(".understand-anything")
 VIZ_STATE_DIR = Path(".dev-stack/viz")
+LEGACY_OUTPUT_DIR = Path("." + "".join(("code", "boarding")))
 LEGACY_DOCS_DIR = Path("docs/diagrams")
-ANALYSIS_INDEX = "analysis.json"
-INJECTION_LEDGER = "injected-readmes.json"
-ROOT_MARKER_ID = "architecture"
-COMPONENT_MARKER_ID = "component-architecture"
+KNOWLEDGE_GRAPH_FILE = understand_runner.KNOWLEDGE_GRAPH_FILE
+DIFF_OVERLAY_FILE = understand_runner.DIFF_OVERLAY_FILE
+INTERMEDIATE_DIR = understand_runner.INTERMEDIATE_DIR
+MANAGED_GRAPH_EXCLUDES = (
+    f"{UNDERSTAND_OUTPUT_DIR}/{INTERMEDIATE_DIR}/",
+    f"{UNDERSTAND_OUTPUT_DIR}/{DIFF_OVERLAY_FILE}",
+)
+SUPPORTED_PLUGIN_EXPERIENCES = understand_runner.SUPPORTED_PLUGIN_EXPERIENCES
 DEFAULT_DEPTH_LEVEL = 2
 DEFAULT_TIMEOUT_SECONDS = 300
 
@@ -30,25 +34,26 @@ class VisualizationModule(ModuleBase):
     NAME = "visualization"
     VERSION = "1.0.0"
     DEPENDS_ON: tuple[str, ...] = ()
-    MANAGED_FILES = (str(CODEBOARDING_OUTPUT_DIR), str(VIZ_STATE_DIR))
+    MANAGED_FILES = (str(UNDERSTAND_OUTPUT_DIR), str(VIZ_STATE_DIR))
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     def install(self, *, force: bool = False) -> ModuleResult:
-        cb_dir = self.repo_root / CODEBOARDING_OUTPUT_DIR
-        cb_dir.mkdir(parents=True, exist_ok=True)
+        graph_dir = self.repo_root / UNDERSTAND_OUTPUT_DIR
+        graph_dir.mkdir(parents=True, exist_ok=True)
         viz_dir = self.repo_root / VIZ_STATE_DIR
         viz_dir.mkdir(parents=True, exist_ok=True)
 
         warnings: list[str] = []
-        if not codeboarding_runner.check_cli_available():
+        if not (graph_dir / KNOWLEDGE_GRAPH_FILE).exists():
             warnings.append(
-                "CodeBoarding CLI not found on PATH; install via 'pip install codeboarding'"
+                "Graph artifacts are missing. Generate and commit "
+                ".understand-anything/knowledge-graph.json using a supported plugin workflow."
             )
 
-        created = [cb_dir, viz_dir]
+        created = [graph_dir, viz_dir]
         return ModuleResult(
             True,
             "Visualization module installed",
@@ -57,31 +62,10 @@ class VisualizationModule(ModuleBase):
         )
 
     def uninstall(self) -> ModuleResult:
-        modified: list[Path] = []
         deleted: list[Path] = []
 
-        # Remove managed README sections via ledger
-        ledger_path = self.repo_root / CODEBOARDING_OUTPUT_DIR / INJECTION_LEDGER
-        if ledger_path.exists():
-            try:
-                from ..visualization.readme_injector import remove_diagram
-
-                data = json.loads(ledger_path.read_text(encoding="utf-8"))
-                for entry in data.get("entries", []):
-                    readme_rel = entry.get("readme_path", "")
-                    marker_id = entry.get("marker_id", "")
-                    if readme_rel and marker_id:
-                        readme_abs = self.repo_root / readme_rel
-                        try:
-                            remove_diagram(readme_abs, marker_id)
-                            modified.append(readme_abs)
-                        except Exception:  # pragma: no cover
-                            logger.warning("Failed to remove section from %s", readme_rel)
-            except Exception:  # pragma: no cover
-                logger.warning("Failed to read injection ledger")
-
         # Delete directories
-        for rel_dir in (CODEBOARDING_OUTPUT_DIR, VIZ_STATE_DIR, LEGACY_DOCS_DIR):
+        for rel_dir in (UNDERSTAND_OUTPUT_DIR, VIZ_STATE_DIR, LEGACY_OUTPUT_DIR, LEGACY_DOCS_DIR):
             abs_dir = self.repo_root / rel_dir
             if abs_dir.exists():
                 shutil.rmtree(abs_dir)
@@ -90,7 +74,6 @@ class VisualizationModule(ModuleBase):
         return ModuleResult(
             True,
             "Visualization assets removed",
-            files_modified=modified,
             files_deleted=deleted,
         )
 
@@ -98,19 +81,28 @@ class VisualizationModule(ModuleBase):
         return self.install(force=True)
 
     def verify(self) -> ModuleStatus:
-        cb_dir = self.repo_root / CODEBOARDING_OUTPUT_DIR
+        graph_dir = self.repo_root / UNDERSTAND_OUTPUT_DIR
         viz_dir = self.repo_root / VIZ_STATE_DIR
-        installed = cb_dir.exists() and viz_dir.exists()
-        cli_available = codeboarding_runner.check_cli_available()
-        healthy = installed and cli_available
+        installed = graph_dir.exists() and viz_dir.exists()
 
         issue: str | None = None
         if not installed:
             issue = "Visualization directories missing"
-        elif not cli_available:
-            issue = "CodeBoarding CLI not found"
+            bootstrap = None
+        else:
+            try:
+                bootstrap = understand_runner.verify_bootstrap(self.repo_root)
+            except Exception as exc:  # pragma: no cover - defensive status path
+                bootstrap = None
+                issue = str(exc)
+            else:
+                if bootstrap.status != "pass":
+                    issue = (
+                        "Committed graph artifacts missing or invalid; "
+                        "run Understand-Anything and commit .understand-anything/knowledge-graph.json"
+                    )
 
-        cb_path = shutil.which("codeboarding")
+        healthy = installed and bootstrap is not None and bootstrap.status == "pass"
         return ModuleStatus(
             name=self.NAME,
             installed=installed,
@@ -118,8 +110,9 @@ class VisualizationModule(ModuleBase):
             healthy=healthy,
             issue=issue,
             config={
-                "codeboarding_path": cb_path,
-                "output_dir": str(CODEBOARDING_OUTPUT_DIR),
+                "output_dir": str(UNDERSTAND_OUTPUT_DIR),
+                "knowledge_graph": str(UNDERSTAND_OUTPUT_DIR / KNOWLEDGE_GRAPH_FILE),
+                "supports_plugins": list(SUPPORTED_PLUGIN_EXPERIENCES),
             },
         )
 

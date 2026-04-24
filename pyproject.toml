@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dev-stack"
-version = "0.1.0"
+version = "1.0.0"
 description = "CLI to initialize or augment repositories with automation, AI pipelines, and Spec Kit integration."
 readme = "README.md"
 authors = [

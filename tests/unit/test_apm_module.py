@@ -335,7 +335,7 @@ class TestAudit:
 
 
 class TestExpandedTemplate:
-    """T018: Verify expanded template contains both dependencies.mcp and dependencies.apm."""
+    """T018: Verify expanded template contains dependencies.apm and no dependencies.mcp."""
 
     def test_template_contains_mcp_and_apm_sections(self, apm: APMModule) -> None:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")

@@ -1,4 +1,4 @@
-"""APM module — delegates MCP server management to Microsoft's Agent Package Manager CLI."""
+"""APM module — manages APM packages and agent skills via the Agent Package Manager CLI."""
 from __future__ import annotations
 
 import os
@@ -326,7 +326,7 @@ class APMModule(ModuleBase):
         result: subprocess.CompletedProcess[str],
         manifest_path: Path,
     ) -> ModuleResult:
-        """Parse apm install output for per-server success/failure."""
+        """Parse apm install output for per-package success/failure."""
         files_created: list[Path] = []
         warnings: list[str] = []
 

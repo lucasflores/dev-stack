@@ -22,20 +22,19 @@ LOCKFILE = "apm.lock.yaml"
 
 
 class APMModule(ModuleBase):
-    """Manage MCP servers via the APM CLI."""
+    """Manage APM packages and agent skills via the APM CLI."""
 
     NAME = "apm"
     VERSION = "0.1.0"
     DEPENDS_ON: Sequence[str] = ()
     MANAGED_FILES: Sequence[str] = (MANIFEST_FILE, LOCKFILE)
     MIN_APM_VERSION = "0.8.0"
-    DEFAULT_SERVERS: tuple[str, ...] = (
-        "io.github.upstash/context7",
-        "io.github.github/github-mcp-server",
-        "huggingface/hf-mcp-server",
-    )
+    DEFAULT_SERVERS: tuple[str, ...] = ()
     DEFAULT_APM_PACKAGES: tuple[str, ...] = (
-        "lucasflores/agent-skills",
+        "lucasflores/agent-skills/agents/idea-to-speckit.agent.md",
+        "lucasflores/agent-skills/prompts/AutoSpecKit.prompt.md",
+        "lucasflores/agent-skills/skills/commit-pipeline",
+        "lucasflores/agent-skills/skills/dev-stack-update",
     )
 
     def __init__(self, repo_root: Path, manifest: dict[str, Any] | None = None) -> None:
@@ -254,7 +253,10 @@ class APMModule(ModuleBase):
         for server in self.DEFAULT_SERVERS:
             if server not in existing_mcp_names:
                 mcp_list.append(server)
-        deps["mcp"] = mcp_list
+        if mcp_list:
+            deps["mcp"] = mcp_list
+        elif "mcp" in deps:
+            del deps["mcp"]
 
         # Merge APM packages
         apm_list: list[str | dict] = deps.get("apm", [])
@@ -338,7 +340,7 @@ class APMModule(ModuleBase):
         if result.returncode == 0:
             return ModuleResult(
                 success=True,
-                message="All MCP servers installed successfully",
+                message="All APM dependencies installed successfully",
                 files_created=files_created,
             )
 

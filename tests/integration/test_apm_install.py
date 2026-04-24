@@ -68,7 +68,7 @@ class TestCommunityPackages:
             assert any("fake-mcp-server" in w for w in result.warnings)
 
     def test_merge_preserves_community_packages(self, apm: APMModule) -> None:
-        """Merge strategy preserves user-added community packages while adding defaults."""
+        """Merge strategy preserves user-added community packages; no default MCP servers added."""
         manifest = apm.repo_root / MANIFEST_FILE
         manifest.write_text(yaml.dump({
             "name": "myproject",
@@ -87,8 +87,8 @@ class TestCommunityPackages:
             apm._bootstrap_manifest(force=False, strategy="merge")
             content = yaml.safe_load(manifest.read_text())
             mcp_list = content["dependencies"]["mcp"]
-            # Community + 3 defaults = 4
-            assert len(mcp_list) == 4
+            # Only the community entry remains — DEFAULT_SERVERS is empty, no defaults added
+            assert len(mcp_list) == 1
             assert "ghcr.io/community/my-mcp-server" in mcp_list
 
 

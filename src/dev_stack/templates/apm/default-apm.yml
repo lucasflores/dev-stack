@@ -1,9 +1,8 @@
 name: "{{ PROJECT_NAME }}"
-version: "1.0.0"
+version: "2.0.0"
 dependencies:
-  mcp:
-    - io.github.upstash/context7
-    - io.github.github/github-mcp-server
-    - huggingface/hf-mcp-server
   apm:
-    - lucasflores/agent-skills#8434caf3f85dabb8df197185f449fea1488406ec
+    - lucasflores/agent-skills/agents/idea-to-speckit.agent.md
+    - lucasflores/agent-skills/prompts/AutoSpecKit.prompt.md
+    - lucasflores/agent-skills/skills/commit-pipeline
+    - lucasflores/agent-skills/skills/dev-stack-update

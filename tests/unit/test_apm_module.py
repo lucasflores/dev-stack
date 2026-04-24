@@ -91,7 +91,8 @@ class TestBootstrapManifest:
         assert manifest_path.exists()
         content = yaml.safe_load(manifest_path.read_text())
         assert "dependencies" in content
-        assert len(content["dependencies"]["mcp"]) == 3
+        assert "mcp" not in content["dependencies"]
+        assert len(content["dependencies"]["apm"]) == 4
 
     def test_skip_when_exists(self, apm: APMModule) -> None:
         # Pre-create manifest
@@ -105,34 +106,30 @@ class TestBootstrapManifest:
         existing.write_text("name: existing\n")
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
-        assert len(content["dependencies"]["mcp"]) == 3
+        assert "mcp" not in content["dependencies"]
+        assert len(content["dependencies"]["apm"]) == 4
 
     def test_merge_adds_missing_defaults(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
         existing.write_text(yaml.dump({
             "name": "myproject",
             "version": "1.0.0",
-            "dependencies": {
-                "mcp": [
-                    "io.github.github/github-mcp-server",
-                    "ghcr.io/custom/my-server",
-                ]
-            }
+            "dependencies": {}
         }))
         manifest_path = apm._bootstrap_manifest(force=False, strategy="merge")
         content = yaml.safe_load(manifest_path.read_text())
-        mcp_list = content["dependencies"]["mcp"]
-        # Original 2 + 2 missing defaults = 4
-        assert len(mcp_list) == 4
-        # Custom server preserved
-        assert "ghcr.io/custom/my-server" in mcp_list
+        # DEFAULT_SERVERS is empty — no mcp key should appear
+        assert "mcp" not in content["dependencies"]
+        # All 4 default apm entries added
+        assert len(content["dependencies"]["apm"]) == 4
 
     def test_force_overwrites_existing(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
         existing.write_text("name: existing\n")
         manifest_path = apm._bootstrap_manifest(force=True)
         content = yaml.safe_load(manifest_path.read_text())
-        assert len(content["dependencies"]["mcp"]) == 3
+        assert "mcp" not in content["dependencies"]
+        assert len(content["dependencies"]["apm"]) == 4
 
     def test_ci_noninteractive_defaults_to_skip(self, apm: APMModule) -> None:
         """In non-interactive mode, _bootstrap_manifest defaults to skip."""
@@ -344,33 +341,38 @@ class TestExpandedTemplate:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
         assert "dependencies" in content
-        assert "mcp" in content["dependencies"]
+        assert "mcp" not in content["dependencies"]
         assert "apm" in content["dependencies"]
+        assert content["version"] == "2.0.0"  # SC-003
 
-    def test_template_preserves_all_mcp_servers(self, apm: APMModule) -> None:
-        """All default MCP servers must be present in the template."""
+    def test_template_has_no_mcp_servers(self, apm: APMModule) -> None:
+        """Template must contain no MCP server entries (DEFAULT_SERVERS is empty)."""
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
-        mcp_list = content["dependencies"]["mcp"]
-        assert len(mcp_list) == 3
-        for server in APMModule.DEFAULT_SERVERS:
-            assert server in mcp_list
+        assert "mcp" not in content["dependencies"]
+        assert APMModule.DEFAULT_SERVERS == ()
 
     def test_template_contains_agent_skills(self, apm: APMModule) -> None:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
         apm_list = content["dependencies"]["apm"]
-        assert len(apm_list) == 1
-        # Entry is pinned to a specific SHA; check base package name only.
-        assert any(
-            entry.split("#")[0] == "lucasflores/agent-skills" for entry in apm_list
-        )
+        assert len(apm_list) == 4
+        expected = [
+            "lucasflores/agent-skills/agents/idea-to-speckit.agent.md",
+            "lucasflores/agent-skills/prompts/AutoSpecKit.prompt.md",
+            "lucasflores/agent-skills/skills/commit-pipeline",
+            "lucasflores/agent-skills/skills/dev-stack-update",
+        ]
+        for entry in expected:
+            assert entry in apm_list
 
     def test_template_apm_packages_format(self, apm: APMModule) -> None:
         manifest_path = apm._bootstrap_manifest(force=False, strategy="overwrite")
         content = yaml.safe_load(manifest_path.read_text())
         for entry in content["dependencies"]["apm"]:
-            assert "/" in entry, f"APM package '{entry}' should use org/repo format"
+            # Each entry must use owner/repo/path format (at least 3 slash-separated segments)
+            parts = entry.split("/")
+            assert len(parts) >= 3, f"APM package '{entry}' should use owner/repo/path format"
 
 
 # ── Merge manifest with dependencies.apm (014-apm-module-swap) ──────
@@ -391,24 +393,28 @@ class TestMergeManifestApm:
         apm._merge_manifest(existing)
         content = yaml.safe_load(existing.read_text())
         assert "apm" in content["dependencies"]
-        assert len(content["dependencies"]["apm"]) == 1
+        # User's existing mcp entry is preserved; no defaults added (DEFAULT_SERVERS is empty)
+        assert len(content["dependencies"]["mcp"]) == 1
+        # All 4 default apm path entries added
+        assert len(content["dependencies"]["apm"]) == 4
 
     def test_merge_does_not_duplicate_existing_apm_packages(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
+        # Pre-populate with one of the four default path entries
         existing.write_text(yaml.dump({
             "name": "myproject",
             "version": "1.0.0",
             "dependencies": {
-                "mcp": [],
-                "apm": ["lucasflores/agent-skills"],
+                "apm": ["lucasflores/agent-skills/skills/commit-pipeline"],
             }
         }))
         apm._merge_manifest(existing)
         content = yaml.safe_load(existing.read_text())
         apm_list = content["dependencies"]["apm"]
-        agent_skills_entries = [e for e in apm_list if "agent-skills" in e]
-        assert len(agent_skills_entries) == 1
-        assert len(apm_list) == 1
+        commit_pipeline_entries = [e for e in apm_list if "commit-pipeline" in e]
+        assert len(commit_pipeline_entries) == 1
+        # 1 pre-existing + 3 new = 4 total
+        assert len(apm_list) == 4
 
     def test_merge_preserves_custom_apm_packages(self, apm: APMModule) -> None:
         existing = apm.repo_root / MANIFEST_FILE
@@ -416,7 +422,6 @@ class TestMergeManifestApm:
             "name": "myproject",
             "version": "1.0.0",
             "dependencies": {
-                "mcp": [],
                 "apm": ["custom/my-package#v1.0"],
             }
         }))
@@ -424,7 +429,32 @@ class TestMergeManifestApm:
         content = yaml.safe_load(existing.read_text())
         apm_list = content["dependencies"]["apm"]
         assert "custom/my-package#v1.0" in apm_list
-        assert len(apm_list) == 2  # custom + agent-skills
+        assert len(apm_list) == 5  # 1 custom + 4 path defaults
+
+    def test_merge_empty_mcp_key_omitted(self, apm: APMModule) -> None:
+        """When manifest has no mcp section and DEFAULT_SERVERS is empty, mcp key is not written."""
+        existing = apm.repo_root / MANIFEST_FILE
+        existing.write_text(yaml.dump({
+            "name": "myproject",
+            "version": "1.0.0",
+            "dependencies": {}
+        }))
+        apm._merge_manifest(existing)
+        content = yaml.safe_load(existing.read_text())
+        assert "mcp" not in content["dependencies"]
+
+    def test_merge_no_mcp_added_from_empty_defaults(self, apm: APMModule) -> None:
+        """DEFAULT_SERVERS is empty: merge on a blank manifest produces no mcp key."""
+        assert APMModule.DEFAULT_SERVERS == ()
+        existing = apm.repo_root / MANIFEST_FILE
+        existing.write_text(yaml.dump({
+            "name": "myproject",
+            "version": "1.0.0",
+            "dependencies": {}
+        }))
+        apm._merge_manifest(existing)
+        content = yaml.safe_load(existing.read_text())
+        assert "mcp" not in content["dependencies"]
 
 
 # ── audit (continued) ───────────────────────────────────────────────

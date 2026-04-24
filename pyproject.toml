@@ -18,6 +18,7 @@ dependencies = [
   "rich>=13.7",
   "pathspec>=0.12",
   "gitlint-core>=0.19",
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

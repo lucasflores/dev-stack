@@ -35,7 +35,8 @@ def test_update_reinstalls_modules_and_refreshes_manifest() -> None:
         assert update_result.exit_code == 0, update_result.output
 
         updated_manifest = read_manifest(manifest_path)
-        assert updated_manifest.modules["hooks"].version == HooksModule.VERSION
+        from dev_stack.modules import _package_version
+        assert updated_manifest.modules["hooks"].version == _package_version()
         assert hook_script.exists()
         assert hook_script.stat().st_mode & stat.S_IXUSR
         content = hook_script.read_text(encoding="utf-8")

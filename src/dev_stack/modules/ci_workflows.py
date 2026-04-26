@@ -26,7 +26,6 @@ def _hash_text(text: str) -> str:
 
 class CIWorkflowsModule(ModuleBase):
     NAME = "ci-workflows"
-    VERSION = "0.1.0"
     MANAGED_FILES = tuple(str(WORKFLOWS_DIR / name) for name in WORKFLOW_TEMPLATES)
 
     def install(self, *, force: bool = False) -> ModuleResult:
@@ -107,7 +106,7 @@ class CIWorkflowsModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=not missing,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue="; ".join(issues) if issues else None,
             config={"workflows": list(WORKFLOW_TEMPLATES.keys())},

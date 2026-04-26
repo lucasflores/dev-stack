@@ -25,7 +25,6 @@ class APMModule(ModuleBase):
     """Manage APM packages and agent skills via the APM CLI."""
 
     NAME = "apm"
-    VERSION = "0.1.0"
     DEPENDS_ON: Sequence[str] = ()
     MANAGED_FILES: Sequence[str] = (MANIFEST_FILE, LOCKFILE)
     MIN_APM_VERSION = "0.8.0"
@@ -80,7 +79,7 @@ class APMModule(ModuleBase):
             return ModuleStatus(
                 name=self.NAME,
                 installed=False,
-                version=self.VERSION,
+                version=self.version,
                 healthy=False,
                 issue=version_msg,
             )
@@ -92,7 +91,7 @@ class APMModule(ModuleBase):
             return ModuleStatus(
                 name=self.NAME,
                 installed=False,
-                version=self.VERSION,
+                version=self.version,
                 healthy=False,
                 issue=f"{MANIFEST_FILE} not found",
             )
@@ -111,7 +110,7 @@ class APMModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=True,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue=issue,
         )

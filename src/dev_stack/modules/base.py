@@ -45,6 +45,12 @@ class ModuleBase(ABC):
         self.repo_root = Path(repo_root)
         self.manifest = manifest or {}
 
+    @property
+    def version(self) -> str:
+        """Return the installed package version (runtime-derived, single source of truth)."""
+        from dev_stack.modules import _package_version
+        return _package_version()
+
     @abstractmethod
     def install(self, *, force: bool = False) -> ModuleResult:  # pragma: no cover - abstract
         raise NotImplementedError

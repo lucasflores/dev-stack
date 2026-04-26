@@ -96,7 +96,7 @@ def _collect_module_statuses(repo_root: Path, manifest: StackManifest) -> dict[s
                 status = ModuleStatus(
                     name=instance.NAME,
                     installed=True,
-                    version=getattr(instance, "VERSION", "unknown"),
+                    version=instance.version,
                     healthy=False,
                     issue=str(exc) or exc.__class__.__name__,
                 )

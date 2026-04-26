@@ -173,7 +173,6 @@ class SphinxDocsModule(ModuleBase):
     """Scaffold Sphinx documentation configuration files."""
 
     NAME = "sphinx_docs"
-    VERSION = "0.1.0"
     DEPENDS_ON: Sequence[str] = ("uv_project",)
     MANAGED_FILES: Sequence[str] = (
         "docs/conf.py",
@@ -238,7 +237,7 @@ class SphinxDocsModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=True,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue=issue,
         )

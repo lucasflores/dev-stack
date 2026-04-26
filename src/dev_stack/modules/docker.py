@@ -24,7 +24,6 @@ def _hash_text(text: str) -> str:
 
 class DockerModule(ModuleBase):
     NAME = "docker"
-    VERSION = "0.1.2"
     MANAGED_FILES = tuple(TEMPLATE_MAP.keys())
 
     def install(self, *, force: bool = False) -> ModuleResult:
@@ -107,7 +106,7 @@ class DockerModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=not missing,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue="; ".join(issues) if issues else None,
             config={"files": list(self.MANAGED_FILES)},

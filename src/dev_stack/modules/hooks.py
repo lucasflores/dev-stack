@@ -158,7 +158,6 @@ class HooksModule(ModuleBase):
     """Install git hooks and pre-commit configuration."""
 
     NAME = "hooks"
-    VERSION = "0.1.0"
     MANAGED_FILES = (".pre-commit-config.yaml", "scripts/hooks/pre-commit", "scripts/hooks/prepare-commit-msg")
 
     def install(self, *, force: bool = False) -> ModuleResult:
@@ -229,7 +228,7 @@ class HooksModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=True,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue=issue,
         )

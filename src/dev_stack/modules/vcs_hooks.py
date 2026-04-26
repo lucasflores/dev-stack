@@ -132,7 +132,6 @@ class VcsHooksModule(ModuleBase):
     """Manages git hooks, constitutional practices, and signing config."""
 
     NAME: str = "vcs_hooks"
-    VERSION: str = "0.1.0"
     DEPENDS_ON: Sequence[str] = ()
     MANAGED_FILES: Sequence[str] = (
         ".git/hooks/commit-msg",
@@ -189,7 +188,7 @@ class VcsHooksModule(ModuleBase):
                 manifest.hooks[hook_name] = HookEntry(
                     checksum=self._compute_checksum(hook_path),
                     installed_at=now,
-                    template_version=self.VERSION,
+                    template_version=self.version,
                 )
 
         self._save_manifest(manifest, created, modified)
@@ -326,7 +325,7 @@ class VcsHooksModule(ModuleBase):
                     manifest.hooks[hook_name] = HookEntry(
                         checksum=self._compute_checksum(hook_path),
                         installed_at=now,
-                        template_version=self.VERSION,
+                        template_version=self.version,
                     )
                     modified.append(hook_path)
             else:
@@ -356,7 +355,7 @@ class VcsHooksModule(ModuleBase):
             return ModuleStatus(
                 name=self.NAME,
                 installed=False,
-                version=self.VERSION,
+                version=self.version,
                 healthy=False,
                 issue="hooks-manifest.json not found",
             )
@@ -395,7 +394,7 @@ class VcsHooksModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=True,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue="; ".join(issues) if issues else None,
         )

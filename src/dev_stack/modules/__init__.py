@@ -7,6 +7,15 @@ from typing import Dict, Iterable, List, Sequence, Type
 
 from ..errors import DependencyError
 from ..manifest import DEFAULT_MODULE_VERSION, ModuleEntry, StackManifest
+
+
+def _package_version() -> str:
+    """Return the installed dev-stack package version, with a safe fallback."""
+    try:
+        from importlib.metadata import version
+        return version("dev-stack")
+    except Exception:
+        return DEFAULT_MODULE_VERSION
 from .base import ModuleBase
 
 ModuleClass = Type[ModuleBase]
@@ -98,8 +107,7 @@ def latest_module_entries(module_names: Sequence[str] | None = None) -> dict[str
 		module_cls = _MODULE_REGISTRY.get(name)
 		if module_cls is None:
 			continue
-		version = getattr(module_cls, "VERSION", DEFAULT_MODULE_VERSION)
-		snapshot[name] = ModuleEntry(version=version, installed=True)
+		snapshot[name] = ModuleEntry(version=_package_version(), installed=True)
 	return snapshot
 
 

@@ -33,7 +33,6 @@ def test_modules_expose_required_metadata() -> None:
     for cls in _all_module_classes():
         assert not inspect.isabstract(cls), f"{cls.__name__} is still abstract"
         assert isinstance(getattr(cls, "NAME", None), str) and cls.NAME, "Missing NAME"
-        assert isinstance(getattr(cls, "VERSION", None), str) and cls.VERSION, "Missing VERSION"
         managed = getattr(cls, "MANAGED_FILES", ())
         assert isinstance(managed, (list, tuple)), "MANAGED_FILES must be a sequence"
         for path in managed:
@@ -77,7 +76,6 @@ def test_visualization_module_identity() -> None:
     from dev_stack.modules.visualization import VisualizationModule
 
     assert VisualizationModule.NAME == "visualization"
-    assert VisualizationModule.VERSION == "1.0.0"
     assert ".understand-anything" in VisualizationModule.MANAGED_FILES[0]
     assert ".dev-stack/viz" in VisualizationModule.MANAGED_FILES[1]
 

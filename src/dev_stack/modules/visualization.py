@@ -32,7 +32,6 @@ DEFAULT_TIMEOUT_SECONDS = 300
 
 class VisualizationModule(ModuleBase):
     NAME = "visualization"
-    VERSION = "1.0.0"
     DEPENDS_ON: tuple[str, ...] = ()
     MANAGED_FILES = (str(UNDERSTAND_OUTPUT_DIR), str(VIZ_STATE_DIR))
 
@@ -106,7 +105,7 @@ class VisualizationModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=installed,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue=issue,
             config={

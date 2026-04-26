@@ -36,6 +36,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-10
 - Repository-tracked JSON artifacts under `.understand-anything/` plus internal state under `.dev-stack/viz/` and `.gitattributes` for LFS policy (019-understand-anything-swap)
 - Python 3.11+ + PyYAML, packaging, click (all existing; no new deps) (020-update-apm-defaults)
 - Files only — `src/dev_stack/templates/apm/default-apm.yml`, in-module constants (020-update-apm-defaults)
+- Python 3.11 + `click`, `rich`, `importlib.metadata` (stdlib), `packaging>=24.0` (new declared dep) (021-update-workflow-bugs)
+- `.dev-stack/pipeline/last-run.json` (JSON file), `dev-stack.toml` (TOML manifest) (021-update-workflow-bugs)
 
 - Python 3.11+ + `click` (CLI framework), `tomli`/`tomli-w` (TOML read/write), `rich` (terminal output), `d2` CLI (diagrams) (001-dev-stack-ecosystem)
 
@@ -55,9 +57,9 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+: Follow standard conventions
 
 ## Recent Changes
+- 021-update-workflow-bugs: Added Python 3.11 + `click`, `rich`, `importlib.metadata` (stdlib), `packaging>=24.0` (new declared dep)
 - 020-update-apm-defaults: Added Python 3.11+ + PyYAML, packaging, click (all existing; no new deps)
 - 019-understand-anything-swap: Added Python 3.11+ + existing CLI/runtime stack (`click`, `rich`, `pathspec`, `PyYAML`, `gitlint-core`), stdlib (`json`, `pathlib`, `subprocess`, `hashlib`, `dataclasses`)
-- 018-soften-sphinx-warnings: Added Python 3.11+ + stdlib (`pathlib`, `tomllib`, `subprocess`), `tomli_w` (init-time config write), existing pipeline/module infrastructure in `dev_stack`
 
 
 <!-- MANUAL ADDITIONS START -->

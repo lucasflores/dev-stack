@@ -254,7 +254,6 @@ class UvProjectModule(ModuleBase):
     """Scaffold a complete Python project via ``uv init --package``."""
 
     NAME = "uv_project"
-    VERSION = "0.1.0"
     DEPENDS_ON: Sequence[str] = ()
     MANAGED_FILES: Sequence[str] = (
         "pyproject.toml",
@@ -380,7 +379,7 @@ class UvProjectModule(ModuleBase):
         return ModuleStatus(
             name=self.NAME,
             installed=True,
-            version=self.VERSION,
+            version=self.version,
             healthy=healthy,
             issue=issue,
         )

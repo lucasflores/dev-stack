@@ -26,11 +26,13 @@ class TestAPMModuleProtocol:
 
     def test_has_required_class_constants(self) -> None:
         assert isinstance(APMModule.NAME, str) and APMModule.NAME == "apm"
-        assert isinstance(APMModule.VERSION, str) and APMModule.VERSION
         assert isinstance(APMModule.DEPENDS_ON, (list, tuple))
         assert isinstance(APMModule.MANAGED_FILES, (list, tuple))
         for path in APMModule.MANAGED_FILES:
             assert isinstance(path, str)
+
+    def test_version_property_resolves(self, apm_module: APMModule) -> None:
+        assert isinstance(apm_module.version, str) and apm_module.version
 
     def test_install_returns_module_result(self, apm_module: APMModule) -> None:
         result = apm_module.install()

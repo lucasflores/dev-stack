@@ -300,3 +300,139 @@ def test_runner_no_hollow_warning_when_some_core_stages_pass(tmp_path: Path) -> 
     result = runner.run()
 
     assert result.warnings == []
+
+
+# ---------------------------------------------------------------------------
+# T016: Hollow-pipeline guard fires only for genuine tool-missing skips
+# ---------------------------------------------------------------------------
+
+def _make_filter_skip_stage(name: str, order: int) -> PipelineStage:
+    """Stage that produces a 'filtered via --stage' skip result directly."""
+    def _executor(_: StageContext) -> StageResult:
+        return StageResult(
+            stage_name=name,
+            status=StageStatus.SKIP,
+            failure_mode=FailureMode.HARD,
+            duration_ms=0,
+            skipped_reason="filtered via --stage",
+        )
+
+    return PipelineStage(
+        order=order,
+        name=name,
+        failure_mode=FailureMode.HARD,
+        requires_agent=False,
+        executor=_executor,
+    )
+
+
+def test_hollow_pipeline_no_warning_when_all_core_stages_filter_skipped(tmp_path: Path) -> None:
+    """Bug 3: Advisory must NOT fire when all core stages are skipped by --stage filter."""
+    stages = [
+        _make_filter_skip_stage("lint", 1),
+        _make_filter_skip_stage("typecheck", 2),
+        _make_filter_skip_stage("test", 3),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    result = runner.run(force=True)
+
+    assert result.warnings == [], (
+        "Expected no advisory when all core stages are filter-skipped, "
+        f"but got: {result.warnings}"
+    )
+
+
+def test_hollow_pipeline_warning_fires_for_tool_missing_skip(tmp_path: Path) -> None:
+    """Bug 3 regression: Advisory must still fire for genuine tool-missing skips."""
+    stages = [
+        _make_skip_stage("lint", 1),        # tool-missing skip
+        _make_skip_stage("typecheck", 2),   # tool-missing skip
+        _make_skip_stage("test", 3),        # tool-missing skip
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    result = runner.run(force=True)
+
+    assert len(result.warnings) == 1
+    assert "No substantive validation" in result.warnings[0]
+
+
+def test_hollow_pipeline_warning_fires_for_mixed_skip_reasons(tmp_path: Path) -> None:
+    """Advisory fires if at least one core stage has a non-filter skip reason."""
+    stages = [
+        _make_filter_skip_stage("lint", 1),  # filter skip — should not trigger alone
+        _make_skip_stage("typecheck", 2),    # tool-missing skip — triggers advisory
+        _make_filter_skip_stage("test", 3),  # filter skip
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    result = runner.run(force=True)
+
+    assert len(result.warnings) == 1
+    assert "No substantive validation" in result.warnings[0]
+
+
+# ---------------------------------------------------------------------------
+# T018: _record_pipeline_run() writes as_of and stale fields
+# ---------------------------------------------------------------------------
+
+def test_record_pipeline_run_writes_as_of_and_stale_false_for_full_run(tmp_path: Path) -> None:
+    """Bug 4: Full run must persist as_of and stale=False."""
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("typecheck", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 3, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    runner.run()
+
+    state_path = tmp_path / ".dev-stack" / "pipeline" / "last-run.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+    assert "as_of" in payload, "Expected 'as_of' field in last-run.json"
+    assert isinstance(payload["as_of"], str) and len(payload["as_of"]) > 0
+    assert payload["stale"] is False
+
+
+def test_record_pipeline_run_writes_stale_true_for_stage_filtered_run(tmp_path: Path) -> None:
+    """Bug 4: A --stage filtered run must persist stale=True."""
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    runner.run(stages=["lint"])  # test will be filter-skipped
+
+    state_path = tmp_path / ".dev-stack" / "pipeline" / "last-run.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+    assert payload["stale"] is True
+    assert "as_of" in payload
+
+
+def test_record_pipeline_run_writes_stale_true_for_aborted_run(tmp_path: Path) -> None:
+    """Bug 4: An aborted (hard-fail) run must persist stale=True."""
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.FAIL),
+        _make_stage("test", 2, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    runner.run()
+
+    state_path = tmp_path / ".dev-stack" / "pipeline" / "last-run.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+    assert payload["stale"] is True
+    assert "as_of" in payload
+
+
+def test_record_pipeline_run_as_of_matches_timestamp(tmp_path: Path) -> None:
+    """as_of must always equal timestamp (same value, backward-compatible alias)."""
+    stages = [
+        _make_stage("lint", 1, failure_mode=FailureMode.HARD, status=StageStatus.PASS),
+    ]
+    runner = PipelineRunner(tmp_path, stages=stages)
+    runner.run()
+
+    state_path = tmp_path / ".dev-stack" / "pipeline" / "last-run.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+    assert payload["as_of"] == payload["timestamp"]

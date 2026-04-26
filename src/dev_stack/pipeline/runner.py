@@ -221,10 +221,14 @@ class PipelineRunner:
         core_stages = {"lint", "typecheck", "test"}
         core_results = [r for r in results if r.stage_name in core_stages]
         if core_results and all(r.status == StageStatus.SKIP for r in core_results):
-            warnings.append(
-                "\u26a0 No substantive validation: lint, typecheck, test all skipped "
-                "due to missing tools. Run 'uv sync --extra dev' to install."
+            tool_missing = any(
+                r.skipped_reason != "filtered via --stage" for r in core_results
             )
+            if tool_missing:
+                warnings.append(
+                    "\u26a0 No substantive validation: lint, typecheck, test all skipped "
+                    "due to missing tools. Run 'uv sync --extra dev' to install."
+                )
 
         # Auto-stage pipeline output files when running as pre-commit hook
         auto_staged: list[str] = []
@@ -331,8 +335,18 @@ class PipelineRunner:
         state_path = self.repo_root / PIPELINE_STATE_FILE
         try:
             state_path.parent.mkdir(parents=True, exist_ok=True)
+            now_str = datetime.now(timezone.utc).strftime(ISO_FORMAT)
+            stale = (
+                summary.aborted_stage is not None
+                or any(
+                    r.skipped_reason == "filtered via --stage"
+                    for r in summary.results
+                )
+            )
             payload = {
-                "timestamp": datetime.now(timezone.utc).strftime(ISO_FORMAT),
+                "timestamp": now_str,
+                "as_of": now_str,
+                "stale": stale,
                 "success": summary.success,
                 "aborted_stage": summary.aborted_stage,
                 "skip_flag_detected": summary.skip_flag_detected,
